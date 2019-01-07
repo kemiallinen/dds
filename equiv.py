@@ -21,38 +21,32 @@ def seq_format(sequent):
 def seq_split(sequent):
     sequent = re.split('⇒', sequent)
     formulas = []
-    for f in sequent:
+    laterAppend = []
+    for i, f in enumerate(sequent):
         temp = []
         for g in re.split(',', f):
             if len(g) > 6:
                 g = re.findall('\((.*?)\)', g)
             temp.append(g)
+        if temp:
+            for k, t in enumerate(temp):
+                if t:
+                    if t[0] == '~':
+                        g = re.findall('\((.*?)\)', t)
+                        if not g:
+                            g = t[1:]
+                        if i == 0:
+                            laterAppend = g
+                        else:
+                            formulas[0].append(g)  # TODO: purge negated formula
+                        temp.remove(t)
+        if i == 1:
+            if laterAppend: temp.append(laterAppend)
         formulas.append(temp)
+
     return formulas
 
 
-def purge_negations(sequent):
-    seq_temp = [item for slist in sequent for item in slist]
-    for i, f in enumerate(seq_temp):
-        if f:
-            if f[0] == '~':
-                g = re.findall('\((.*?)\)', f)
-                if not g:
-                    g = f[1:]
-                if i < len(sequent[0]):
-                    sequent[1].append(g)
-                else:
-                    sequent[0].append(g)    #TODO: purge negated formula
-    return sequent
-
-    print('sequent={}'.format(sequent))
-    print('len(sequent)={}'.format(len(sequent)))
-    print('len(sequent)[0]={}'.format(len(sequent[0])))
-    print('len(sequent)[1]={}'.format(len(sequent[1])))
-    print('seq_temp={}'.format(seq_temp))
-    print('len(seq_temp)={}'.format(len(seq_temp)))
-
-    return []
 # TODO: negation remover
 
 # TODO: seq2rules
