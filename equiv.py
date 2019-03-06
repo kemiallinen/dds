@@ -18,36 +18,50 @@ def seq_format(sequent):
     return multi_replace(dictionary, sequent)
 
 
+def negation_remover(sequent):
+    negated_elt = re.findall('~(.*?)[⇒,]', sequent)
+    re.findall('~\((.*?)[\)⇒,]', 'p≡q⇒~(p≡r),~(q≡r)≡(p≡r),~p')
+
+
 def seq_split(sequent):
     sequent = re.split('⇒', sequent)
     formulas = []
-    laterAppend = []
-    for i, f in enumerate(sequent):
-        temp = []
-        for g in re.split(',', f):
-            if len(g) > 6:
-                g = re.findall('\((.*?)\)', g)
-            temp.append(g)
-        if temp:
-            for k, t in enumerate(temp):
-                if t:
-                    if t[0] == '~':
-                        g = re.findall('\((.*?)\)', t)
-                        if not g:
-                            g = t[1:]
-                        if i == 0:
-                            laterAppend = g
-                        else:
-                            formulas[0].append(g)  # TODO: purge negated formula
-                        temp.remove(t)
-        if i == 1:
-            if laterAppend: temp.append(laterAppend)
-        formulas.append(temp)
+    later_append = []
 
-    return formulas
+    # for i, f in enumerate(sequent):
+    #     temp = []
+    #     for g in re.split(',', f):
+    #         if len(g) > 6:
+    #             g = re.findall('\((.*?)\)', g)
+    #         temp.append(g)
+    #     if temp:
+    #         for k, t in enumerate(temp):
+    #             if t:
+    #                 if t[0] == '~':
+    #                     g = re.findall('\((.*?)\)', t)
+    #                     if not g:
+    #                         g = t[1:]
+    #                     if i == 0:
+    #                         later_append = g
+    #                     else:
+    #                         formulas[0].append(g[0])  # TODO: manage empty lists during nr process
+    #                     temp.remove(t)
+    #                     print('temp = {}'.format(temp))
+    #                     print('len temp = {}'.format(len(temp)))
+    #     if i == 1:
+    #         if later_append:
+    #             temp.append(later_append[0])
+    #     formulas.append(temp)
+    # print(str(formulas[0]))
+    # print(str(formulas[1]))
+    # if len(formulas[0]) and len(formulas[1]):
+    #     formulas_txt = formulas[0][0] + '⇒' + formulas[1][0]
+    # elif len(formulas[0]) == 0:
+    #     formulas_txt = '⇒' + formulas[1][0]
+    # else:
+    #     formulas_txt = formulas[0][0] + '⇒'
+    return formulas_txt
 
-
-# TODO: negation remover
 
 # TODO: seq2rules
 
@@ -130,3 +144,6 @@ singleFormulas = []
 [singleFormulas.append(seq_split(seq)) for seq in testSeqsFormatted]
 
 [print('singleFormulas[{}] = {}'.format(i, sinFor)) for i, sinFor in enumerate(singleFormulas)]
+
+print('single[2][0][0] = {}'.format(singleFormulas[1][0][0]))
+print('len single[2][0][0] = {}'.format(len(singleFormulas[1][0][0])))
