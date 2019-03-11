@@ -24,10 +24,11 @@ def negation_remover(sequent):
         neg_nested = re.findall('~\((\(.*?\))\)', elt)
         for nests in neg_nested:
             sequent[abs(n-1)] += ',' + nests
-            sequent[n].replace(nests, '')
-
-    negated_elt = re.findall('~(.*?)[⇒,]', sequent)
-    re.findall('~\((.*?)[\)⇒,]', 'p≡q⇒~(p≡r),~(q≡r)≡(p≡r),~p')
+            to_replace = '~(' + nests + ')'
+            sequent[n] = sequent[n].replace(to_replace, '')
+    return sequent
+    # negated_elt = re.findall('~(.*?)[⇒,]', sequent)
+    # re.findall('~\((.*?)[\)⇒,]', 'p≡q⇒~(p≡r),~(q≡r)≡(p≡r),~p')
 
 
 def seq_split(sequent):
@@ -67,90 +68,93 @@ def seq_split(sequent):
     #     formulas_txt = '⇒' + formulas[1][0]
     # else:
     #     formulas_txt = formulas[0][0] + '⇒'
-    return formulas_txt
+    return formulas
 
 
-# TODO: seq2rules
+test_seq = '~p,~p≡q,p≡~q⇒~(p≡r),~(q≡r)≡(p≡r),(q≡r)≡~(p≡r),~((q≡r)≡(p≡r)),~p'
+print(negation_remover(test_seq))
 
-# TODO: save output to tex file
-
-# '=' is the equivalence for the purpose of a user-friendly input
-testSeqs = ['p->p=p',
-            '->p=p,p',
-            '~p->p=p',
-            '->p=p,~p',
-            'p=q->p=r,(q=r)=(p=r)',
-            'p=q,p=r->(q=r)=(p=r)',
-            'p=q->~(p=r),(q=r)=(p=r)',
-            'p=q,~(p=r)->(q=r)=(p=r)']
-
-[print('testSeqs[{}] = {}'.format(i, seq)) for i, seq in enumerate(testSeqs)]
-print('\n')
-
-rulesNoise = {'B,A≡B,G⇒D':      ['A,B,G⇒D',
-                                 'A,A≡B,G⇒D'],
-              'G⇒D,A,A≡B':      ['B,G⇒D,A≡B',
-                                 'B,G⇒D,A'],
-              'G⇒D,B,A≡B':      ['A,G⇒D,A≡B',
-                                 'A,G⇒D,B'],
-              'B,G⇒D,A≡B':      ['B,G⇒D,A',
-                                 'G⇒D,A,A≡B'],
-              'A,G⇒D,A≡B':      ['A,G⇒D,B',
-                                 'G⇒D,B,A≡B'],
-              'A,G⇒D,B':        ['G⇒D,B,A≡B',
-                                 'A,G⇒D,A≡B'],
-              'A≡B,G⇒D,A':      ['A≡B,G⇒D,B',
-                                 'G⇒D,A,B'],
-              'A,A≡B,G⇒D':      ['A,B,G⇒D',
-                                 'B,A≡B,G⇒D'],
-              'A≡B,G⇒D,B':      ['G⇒D,A,B',
-                                 'A≡B,G⇒D,A'],
-              'A,B,G⇒D,A≡B':    ['A,A≡B,G⇒D,B',
-                                 'B,A≡B,G⇒D,A',
-                                 'G⇒D,A,B,A≡B'],
-              'B,A≡B,G⇒D,A':    ['G⇒D,A,B,A≡B',
-                                 'A,B,G⇒D,A≡B'],
-              'A,A≡B,G⇒D,B':    ['G⇒D,A,B,A≡B',
-                                 'B,A≡B,G⇒D,A',
-                                 'A,B,G⇒D,A≡B'],
-              'G⇒D,A,B,A≡B':    ['A,B,G⇒D,A≡B',
-                                 'B,A≡B,G⇒D,A'],
-              'A,B,G⇒D':        'B,A≡B,G⇒D',
-              'B,G⇒D,A':        ['G⇒D,A,A≡B',
-                                 'B,G⇒D,A≡B'],
-              'G⇒D,A,B':        'A≡B,G⇒D,B'}
-
-rulesNoiseOneSided = {'B,A≡B,G⇒D':      ['A,B,G⇒D',
-                                 'A,A≡B,G⇒D'],
-              'G⇒D,A,A≡B':      ['B,G⇒D,A≡B',
-                                 'B,G⇒D,A'],
-              'G⇒D,B,A≡B':      'A,G⇒D,A≡B',
-              'B,G⇒D,A≡B':      'B,G⇒D,A',
-              'A,G⇒D,A≡B':      'A,G⇒D,B',
-              'A,G⇒D,B':        'G⇒D,B,A≡B',
-              'A≡B,G⇒D,A':      ['A≡B,G⇒D,B',
-                                 'G⇒D,A,B'],
-              'A,A≡B,G⇒D':      'A,B,G⇒D',
-              'A≡B,G⇒D,B':      'G⇒D,A,B',
-              'A,B,G⇒D,A≡B':    ['A,A≡B,G⇒D,B',
-                                 'B,A≡B,G⇒D,A'],
-              'B,A≡B,G⇒D,A':    'G⇒D,A,B,A≡B',
-              'A,A≡B,G⇒D,B':    ['G⇒D,A,B,A≡B',
-                                 'B,A≡B,G⇒D,A'],
-              'G⇒D,A,B,A≡B':    'A,B,G⇒D,A≡B'}
-
-testSeqsFormatted = []
-
-[testSeqsFormatted.append(seq_format(seq)) for seq in testSeqs]
-
-[print('testSeqsFormatted[{}] = {}'.format(i, seq)) for i, seq in enumerate(testSeqsFormatted)]
-print('\n')
-
-singleFormulas = []
-
-[singleFormulas.append(seq_split(seq)) for seq in testSeqsFormatted]
-
-[print('singleFormulas[{}] = {}'.format(i, sinFor)) for i, sinFor in enumerate(singleFormulas)]
-
-print('single[2][0][0] = {}'.format(singleFormulas[1][0][0]))
-print('len single[2][0][0] = {}'.format(len(singleFormulas[1][0][0])))
+# # TODO: seq2rules
+#
+# # TODO: save output to tex file
+#
+# # '=' is the equivalence for the purpose of a user-friendly input
+# testSeqs = ['p->p=p',
+#             '->p=p,p',
+#             '~p->p=p',
+#             '->p=p,~p',
+#             'p=q->p=r,(q=r)=(p=r)',
+#             'p=q,p=r->(q=r)=(p=r)',
+#             'p=q->~(p=r),(q=r)=(p=r)',
+#             'p=q,~(p=r)->(q=r)=(p=r)']
+#
+# [print('testSeqs[{}] = {}'.format(i, seq)) for i, seq in enumerate(testSeqs)]
+# print('\n')
+#
+# rulesNoise = {'B,A≡B,G⇒D':      ['A,B,G⇒D',
+#                                  'A,A≡B,G⇒D'],
+#               'G⇒D,A,A≡B':      ['B,G⇒D,A≡B',
+#                                  'B,G⇒D,A'],
+#               'G⇒D,B,A≡B':      ['A,G⇒D,A≡B',
+#                                  'A,G⇒D,B'],
+#               'B,G⇒D,A≡B':      ['B,G⇒D,A',
+#                                  'G⇒D,A,A≡B'],
+#               'A,G⇒D,A≡B':      ['A,G⇒D,B',
+#                                  'G⇒D,B,A≡B'],
+#               'A,G⇒D,B':        ['G⇒D,B,A≡B',
+#                                  'A,G⇒D,A≡B'],
+#               'A≡B,G⇒D,A':      ['A≡B,G⇒D,B',
+#                                  'G⇒D,A,B'],
+#               'A,A≡B,G⇒D':      ['A,B,G⇒D',
+#                                  'B,A≡B,G⇒D'],
+#               'A≡B,G⇒D,B':      ['G⇒D,A,B',
+#                                  'A≡B,G⇒D,A'],
+#               'A,B,G⇒D,A≡B':    ['A,A≡B,G⇒D,B',
+#                                  'B,A≡B,G⇒D,A',
+#                                  'G⇒D,A,B,A≡B'],
+#               'B,A≡B,G⇒D,A':    ['G⇒D,A,B,A≡B',
+#                                  'A,B,G⇒D,A≡B'],
+#               'A,A≡B,G⇒D,B':    ['G⇒D,A,B,A≡B',
+#                                  'B,A≡B,G⇒D,A',
+#                                  'A,B,G⇒D,A≡B'],
+#               'G⇒D,A,B,A≡B':    ['A,B,G⇒D,A≡B',
+#                                  'B,A≡B,G⇒D,A'],
+#               'A,B,G⇒D':        'B,A≡B,G⇒D',
+#               'B,G⇒D,A':        ['G⇒D,A,A≡B',
+#                                  'B,G⇒D,A≡B'],
+#               'G⇒D,A,B':        'A≡B,G⇒D,B'}
+#
+# rulesNoiseOneSided = {'B,A≡B,G⇒D':      ['A,B,G⇒D',
+#                                  'A,A≡B,G⇒D'],
+#               'G⇒D,A,A≡B':      ['B,G⇒D,A≡B',
+#                                  'B,G⇒D,A'],
+#               'G⇒D,B,A≡B':      'A,G⇒D,A≡B',
+#               'B,G⇒D,A≡B':      'B,G⇒D,A',
+#               'A,G⇒D,A≡B':      'A,G⇒D,B',
+#               'A,G⇒D,B':        'G⇒D,B,A≡B',
+#               'A≡B,G⇒D,A':      ['A≡B,G⇒D,B',
+#                                  'G⇒D,A,B'],
+#               'A,A≡B,G⇒D':      'A,B,G⇒D',
+#               'A≡B,G⇒D,B':      'G⇒D,A,B',
+#               'A,B,G⇒D,A≡B':    ['A,A≡B,G⇒D,B',
+#                                  'B,A≡B,G⇒D,A'],
+#               'B,A≡B,G⇒D,A':    'G⇒D,A,B,A≡B',
+#               'A,A≡B,G⇒D,B':    ['G⇒D,A,B,A≡B',
+#                                  'B,A≡B,G⇒D,A'],
+#               'G⇒D,A,B,A≡B':    'A,B,G⇒D,A≡B'}
+#
+# testSeqsFormatted = []
+#
+# [testSeqsFormatted.append(seq_format(seq)) for seq in testSeqs]
+#
+# [print('testSeqsFormatted[{}] = {}'.format(i, seq)) for i, seq in enumerate(testSeqsFormatted)]
+# print('\n')
+#
+# singleFormulas = []
+#
+# [singleFormulas.append(seq_split(seq)) for seq in testSeqsFormatted]
+#
+# [print('singleFormulas[{}] = {}'.format(i, sinFor)) for i, sinFor in enumerate(singleFormulas)]
+#
+# print('single[2][0][0] = {}'.format(singleFormulas[1][0][0]))
+# print('len single[2][0][0] = {}'.format(len(singleFormulas[1][0][0])))
