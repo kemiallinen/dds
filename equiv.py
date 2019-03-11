@@ -19,6 +19,13 @@ def seq_format(sequent):
 
 
 def negation_remover(sequent):
+    sequent = re.split('⇒', sequent)
+    for n, elt in enumerate(sequent):
+        neg_nested = re.findall('~\((\(.*?\))\)', elt)
+        for nests in neg_nested:
+            sequent[abs(n-1)] += ',' + nests
+            sequent[n].replace(nests, '')
+
     negated_elt = re.findall('~(.*?)[⇒,]', sequent)
     re.findall('~\((.*?)[\)⇒,]', 'p≡q⇒~(p≡r),~(q≡r)≡(p≡r),~p')
 
