@@ -18,61 +18,35 @@ def seq_format(sequent):
     return multi_replace(dictionary, sequent)
 
 
-def negation_remover(sequent):
-    sequent = re.split('⇒', sequent)
-    for n, elt in enumerate(sequent):
-        neg_nested = re.findall('~\((\(.*?\))\)', elt)
-        for nests in neg_nested:
-            sequent[abs(n-1)] += ',' + nests
-            to_replace = '~(' + nests + ')'
-            sequent[n] = sequent[n].replace(to_replace, '')
+def negs_replace(negs, sequent, n):
+    for neg in negs:
+        if len(neg) == 2:
+            sequent[abs(n - 1)] += ',' + neg[1:]
+            to_replace = neg
+        else:
+            sequent[abs(n - 1)] += ',' + neg
+            to_replace = '~(' + neg + ')'
+        sequent[n] = sequent[n].replace(to_replace, '')
+        sequent[n] = sequent[n].replace(',,', ',')
+        if sequent[n][0] == ',':
+            sequent[n] = sequent[n][1:]
     return sequent
-    # negated_elt = re.findall('~(.*?)[⇒,]', sequent)
-    # re.findall('~\((.*?)[\)⇒,]', 'p≡q⇒~(p≡r),~(q≡r)≡(p≡r),~p')
 
 
-def seq_split(sequent):
-    sequent = re.split('⇒', sequent)
-    formulas = []
-    later_append = []
-
-    # for i, f in enumerate(sequent):
-    #     temp = []
-    #     for g in re.split(',', f):
-    #         if len(g) > 6:
-    #             g = re.findall('\((.*?)\)', g)
-    #         temp.append(g)
-    #     if temp:
-    #         for k, t in enumerate(temp):
-    #             if t:
-    #                 if t[0] == '~':
-    #                     g = re.findall('\((.*?)\)', t)
-    #                     if not g:
-    #                         g = t[1:]
-    #                     if i == 0:
-    #                         later_append = g
-    #                     else:
-    #                         formulas[0].append(g[0])  # TODO: manage empty lists during nr process
-    #                     temp.remove(t)
-    #                     print('temp = {}'.format(temp))
-    #                     print('len temp = {}'.format(len(temp)))
-    #     if i == 1:
-    #         if later_append:
-    #             temp.append(later_append[0])
-    #     formulas.append(temp)
-    # print(str(formulas[0]))
-    # print(str(formulas[1]))
-    # if len(formulas[0]) and len(formulas[1]):
-    #     formulas_txt = formulas[0][0] + '⇒' + formulas[1][0]
-    # elif len(formulas[0]) == 0:
-    #     formulas_txt = '⇒' + formulas[1][0]
-    # else:
-    #     formulas_txt = formulas[0][0] + '⇒'
-    return formulas
+def negation_remover(sequent, op):
+    sequent = re.split(op, sequent)
+    regex_defs = ['~[A-Za-z]', '~\((\(.*?\))\)', '~\((.*?)\)']
+    for rd in regex_defs:
+        for n, elt in enumerate(sequent):
+            negs = re.findall(rd, elt)
+            sequent = negs_replace(negs, sequent, n)
+            print(sequent)
+    return op.join(sequent)
 
 
-test_seq = '~p,~p≡q,p≡~q⇒~(p≡r),~(q≡r)≡(p≡r),(q≡r)≡~(p≡r),~((q≡r)≡(p≡r)),~p'
-print(negation_remover(test_seq))
+test_seq = '~p,~q,~(p≡r)⇒~((q≡r)≡(p≡r)),~p'
+print(test_seq)
+print(negation_remover(test_seq, op='⇒'))
 
 # # TODO: seq2rules
 #
