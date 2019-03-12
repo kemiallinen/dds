@@ -1,4 +1,5 @@
 import re
+from itertools import chain
 
 
 def multi_replace(dictionary, text):
@@ -21,46 +22,102 @@ def seq_format(sequent):
 def negs_replace(negs, sequent, n):
     for neg in negs:
         if len(neg) == 2:
-            sequent[abs(n - 1)] += ',' + neg[1:]
+            if sequent[abs(n - 1)]:
+                sequent[abs(n - 1)] += ',' + neg[1:]
+            else:
+                sequent[abs(n - 1)] += neg[1:]
             to_replace = neg
         else:
-            sequent[abs(n - 1)] += ',' + neg
+            if sequent[abs(n - 1)]:
+                sequent[abs(n - 1)] += ',' + neg
+            else:
+                sequent[abs(n - 1)] += neg
             to_replace = '~(' + neg + ')'
+
         sequent[n] = sequent[n].replace(to_replace, '')
         sequent[n] = sequent[n].replace(',,', ',')
-        if sequent[n][0] == ',':
-            sequent[n] = sequent[n][1:]
+        if sequent[n]:
+            if sequent[n][0] == ',':
+                sequent[n] = sequent[n][1:]
+            if sequent[n][-1] == ',':
+                sequent[n] = sequent[n][:-1]
+
     return sequent
 
 
-def negation_remover(sequent, op):
-    sequent = re.split(op, sequent)
+def negation_remover(sequent, ss):
+    sequent = re.split(ss, sequent)
     regex_defs = ['~[A-Za-z]', '~\((\(.*?\))\)', '~\((.*?)\)']
     for rd in regex_defs:
-        for n, elt in enumerate(sequent):
-            negs = re.findall(rd, elt)
+        for n, side in enumerate(sequent):
+            negs = re.findall(rd, side)
             sequent = negs_replace(negs, sequent, n)
-            print(sequent)
-    return op.join(sequent)
+
+    return ss.join(sequent)
 
 
-test_seq = '~p,~q,~(p≡r)⇒~((q≡r)≡(p≡r)),~p'
-print(test_seq)
-print(negation_remover(test_seq, op='⇒'))
+# test_seq = '~p,~q,~(p≡r)⇒~((q≡r)≡(p≡r)),~p'
+# test_seq = 'p=q,~(p=r)->(q=r)=(p=r)'
+testSeqs = ['p->p=p',
+            '->p=p,p',
+            '~p->p=p',
+            '->p=p,~p',
+            'p=q->p=r,(q=r)=(p=r)',
+            'p=q,p=r->(q=r)=(p=r)',
+            'p=q->~(p=r),(q=r)=(p=r)',
+            'p=q,~(p=r)->(q=r)=(p=r)']
+lang = 'ABGD'
+ss = '⇒'
+op = '≡'
+
+for test_seq in testSeqs:
+    rule_dict = {}
+
+    test_seq = seq_format(test_seq)
+    print(test_seq)
+    seq_step_1 = negation_remover(test_seq, ss=ss)
+    # print(seq_step_1)
+
+    '''seq2rules'''
+    sequent = re.split(ss, seq_step_1)
+    for n, side in enumerate(sequent):
+        sequent[n] = re.split(',', side)
+    print(sequent)
+    longest_elt = max(chain.from_iterable(sequent), key=len)
+    # print(longest_elt)
+    dissolve = re.findall('\((.*?)\)', longest_elt)
+    if not dissolve:
+        dissolve = re.split(op, longest_elt)
+    # print(dissolve)
+    for w1, w2 in zip(dissolve, lang[:len(dissolve)]):
+        rule_dict.setdefault(w1, w2)
+
+    if len(rule_dict) > 1:
+        for n, side in enumerate(sequent):
+            side = ','.join(side)
+            sequent[n] = multi_replace(rule_dict, side)
+            sequent[n] = re.sub('\(|\)', '', sequent[n])
+            # sequent[n] = re.sub(rule_dict[lang[0]], lang[0], side)
+            # print(sequent[n])
+            # sequent[n] = re.sub(rule_dict[lang[1]], lang[1], side)
+            # print(sequent[n])
+
+
+    print(rule_dict)
+    print(len(rule_dict))
+    print(sequent)
+    # mmm = chain.from_iterable(sequent)
+    # print(mmm)
+    # print(multi_replace(rule_dict, mmm))
+    print('\n')
+
 
 # # TODO: seq2rules
 #
 # # TODO: save output to tex file
 #
 # # '=' is the equivalence for the purpose of a user-friendly input
-# testSeqs = ['p->p=p',
-#             '->p=p,p',
-#             '~p->p=p',
-#             '->p=p,~p',
-#             'p=q->p=r,(q=r)=(p=r)',
-#             'p=q,p=r->(q=r)=(p=r)',
-#             'p=q->~(p=r),(q=r)=(p=r)',
-#             'p=q,~(p=r)->(q=r)=(p=r)']
+
 #
 # [print('testSeqs[{}] = {}'.format(i, seq)) for i, seq in enumerate(testSeqs)]
 # print('\n')
