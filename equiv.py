@@ -1,5 +1,6 @@
 import re
 from itertools import chain
+import random
 
 
 class Dictlist(dict):
@@ -48,7 +49,8 @@ class Proofer():
                 print('\t' * self.num_recurs + '[no rules found]')
                 print('\t' * self.num_recurs + '[cut]')
                 solutions = self.cut()
-
+            if type(solutions) == str:
+                solutions = list(solutions)
             print('\t' * self.num_recurs + '[solutions] = {}'.format(solutions))
 
             for self.num, solution in enumerate(solutions):
@@ -104,25 +106,8 @@ class Proofer():
     def seq2base(self):
         sequent = re.split(self.ss, self.sequent)
 
-        for n, side in enumerate(sequent):
-            sequent[n] = re.split(',', side)
+        dissolve = self.update_dict(sequent)
 
-        longest_elt = max(chain.from_iterable(sequent), key=len)
-        dissolve = re.findall('\((.*?)\)', longest_elt)
-        if not dissolve:
-            dissolve = re.split(self.op, longest_elt)
-
-        self.rule_dict = Dictlist()
-        for w1, w2 in zip(dissolve, self.lang[:len(dissolve)]):
-            if len(w1) > 1:
-                self.rule_dict[w1] = w2
-                self.inv_dict[w2] = '(' + w1 + ')'
-            else:
-                self.rule_dict[w1] = w2
-                self.inv_dict[w2] = w1
-        print(self.rule_dict)
-        print(self.inv_dict)
-        print(dissolve)
         for n, side in enumerate(sequent):
             if n == 0:
                 noise = 'Γ'
@@ -135,9 +120,9 @@ class Proofer():
                     side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][0], side[num_elt])
                     side[num_elt] = re.sub('\(|\)', '', side[num_elt])
                 else:
-                    while dissolve[0] in side[num_elt]:
-                        side[num_elt] = re.sub(dissolve[0], self.rule_dict[dissolve[0]][0], elt, 1)
-                        side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][1], side[num_elt], 1)
+                    # while dissolve[0] in side[num_elt]:
+                    side[num_elt] = re.sub(dissolve[0], self.rule_dict[dissolve[0]][0], elt, 1)
+                    side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][1], side[num_elt], 1)
 
                 if not any(ch in side[num_elt] for ch in self.lang):
                     if side[num_elt]:
@@ -158,14 +143,51 @@ class Proofer():
                 self.inv_dict[ch] = ''
         sol_seq = []
         for elt in re.split(self.ss, multi_replace(self.inv_dict, solution)):
-            sol_seq.append(','.join(filter(None, re.split(',', elt))))
+            sol_side = []
+            for splt in re.split(',', elt):
+                if (len(re.findall('\((.*?)\)', splt)) == 1) and (not splt[0] == '~'):
+                    sol_side.append(re.sub('\(|\)', '', splt))
+                else:
+                    sol_side.append(splt)
+            sol_seq.append(','.join(filter(None, sol_side)))
         return self.ss.join(sol_seq)
+
+    def update_dict(self, sequent):
+        for n, side in enumerate(sequent):
+            sequent[n] = re.split(',', side)
+        lens = []
+        elts = []
+        for elt in chain.from_iterable(sequent):
+            lens.append(len(elt))
+            elts.append(elt)
+        print('elts = {}'.format(elts))
+        if (len(set(lens)) == 1) and not(len(set(re.findall('[a-z]', ''.join(elts))))<=2):
+            dissolve = random.sample(elts, 2)
+        else:
+            longest_elt = max(chain.from_iterable(sequent), key=len)
+            dissolve = re.findall('\((.*?)\)', longest_elt)
+            print('dissolve = {}'.format(dissolve))
+            if not dissolve:
+                dissolve = re.split(self.op, longest_elt)
+
+        self.rule_dict = Dictlist()
+        for w1, w2 in zip(dissolve, self.lang[:len(dissolve)]):
+            if len(w1) > 1:
+                self.rule_dict[w1] = w2
+                self.inv_dict[w2] = '(' + w1 + ')'
+            else:
+                self.rule_dict[w1] = w2
+                self.inv_dict[w2] = w1
+        print('rule_dict =  {}'.format(self.rule_dict))
+        print('inv_dict = {}'.format(self.inv_dict))
+        print('dissolve = {}'.format(dissolve))
+        return dissolve
 
     def sort_formulas(self, side, num_side):
         if num_side == 0:
             sort_ord = {'A': 1, 'B': 2, 'A' + op + 'B': 3, 'Γ': 4}
         else:
-            sort_ord = {'Δ': 1, 'A': 2, 'B': 3, 'A' + op + 'B': 4}
+            sort_ord = {'Δ': 1, 'A': 2, 'B': 3, 'A' + op + 'B': 4, 'B' + op + 'A': 5}
         to_sort = re.split(',', side)
         to_sort_num = []
         for elt in to_sort:
@@ -246,8 +268,8 @@ rulesNoise = {'B,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ',
 ss = '⇒'
 op = '≡'
 
-test_seq = testSeqs[4]
-# test_seq = '->(p=q)=(q=p)'
+# test_seq = testSeqs[4]
+test_seq = '->(p=q)=(q=p)'
 # test_seq = '->p=p'
 test_seq = seq_format(test_seq)
 obj = Proofer(test_seq, rulesNoise, ss, op)
@@ -273,3 +295,4 @@ obj.pipeline()
 #               'A,A≡B,G⇒D,B':    ['G⇒D,A,B,A≡B',
 #                                  'B,A≡B,G⇒D,A'],
 #               'G⇒D,A,B,A≡B':    'A,B,G⇒D,A≡B'}
+# TODO: something with cut
