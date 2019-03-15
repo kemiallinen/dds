@@ -59,15 +59,14 @@ class Proofer():
 
                 print('\n')
                 print('nodes checked = {}'.format(self.nodes_checked))
-                # print('nodes closed = {}'.format(self.closed_nodes))
                 print('\n')
                 if self.num_recurs < 50:
-                    print(self.sequent in self.nodes_checked)
-                    print(not(self.sequent in self.nodes_checked))
                     if not (self.sequent in self.nodes_checked):
                         self.nodes_checked.append(self.base2seq(self.sequent))
                         self.num_recurs += 1
                         self.pipeline()
+                    else:
+                        self.num_recurs -= 1
 
     def check_if_tautology(self):
         if set(re.split(',', self.sequent.split(self.ss)[0])) & set(re.split(',', self.sequent.split(self.ss)[1])):
@@ -115,9 +114,15 @@ class Proofer():
 
         self.rule_dict = Dictlist()
         for w1, w2 in zip(dissolve, self.lang[:len(dissolve)]):
-            self.rule_dict[w1] = w2
-            self.inv_dict[w2] = w1
-
+            if len(w1) > 1:
+                self.rule_dict[w1] = w2
+                self.inv_dict[w2] = '(' + w1 + ')'
+            else:
+                self.rule_dict[w1] = w2
+                self.inv_dict[w2] = w1
+        print(self.rule_dict)
+        print(self.inv_dict)
+        print(dissolve)
         for n, side in enumerate(sequent):
             if n == 0:
                 noise = 'Γ'
@@ -137,6 +142,7 @@ class Proofer():
                 if not any(ch in side[num_elt] for ch in self.lang):
                     if side[num_elt]:
                         self.rule_dict[side[num_elt]] = noise
+                        self.inv_dict[noise] = side[num_elt]
                     side[num_elt] = noise
 
             sequent[n] = ','.join(side)
@@ -240,9 +246,9 @@ rulesNoise = {'B,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ',
 ss = '⇒'
 op = '≡'
 
-# test_seq = testSeqs[0]
+test_seq = testSeqs[4]
 # test_seq = '->(p=q)=(q=p)'
-test_seq = '->p=p'
+# test_seq = '->p=p'
 test_seq = seq_format(test_seq)
 obj = Proofer(test_seq, rulesNoise, ss, op)
 obj.pipeline()
