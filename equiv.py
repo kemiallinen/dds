@@ -20,7 +20,7 @@ class Proofer():
         self.op = op
         self.lang = 'ABΓΔ'
         self.rule_dict = Dictlist()
-        self.inv_dict = {}
+        self.inv_dict = {'A': '', 'B': ''}
         self.cut_formula = ''
         self.possible_cuts = 'AB'
         self.num_recurs = 1
@@ -172,6 +172,10 @@ class Proofer():
 
         self.rule_dict = Dictlist()
         for w1, w2 in zip(dissolve, self.lang[:len(dissolve)]):
+            if not (self.inv_dict[w2] == '(' + w1 + ')'):
+                if not (self.inv_dict[w2] == w1):
+                    self.possible_cuts = 'AB'
+
             if len(w1) > 1:
                 self.rule_dict[w1] = w2
                 self.inv_dict[w2] = '(' + w1 + ')'
@@ -197,6 +201,7 @@ class Proofer():
 
     def cut(self):
         sequent_to_cut = self.sequent.split(self.ss)
+        print('possible cuts = {}'.format(self.possible_cuts))
         self.cut_formula = '~' + self.possible_cuts[0]
         try:
             self.possible_cuts = self.possible_cuts[1:]
