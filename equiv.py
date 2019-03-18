@@ -33,15 +33,13 @@ class Proofer():
             print('\t' * self.num_recurs + '{} is tautology'.format(self.sequent))
             print('\t' * self.num_recurs + 'node {}.{} is closed'.format(self.num_recurs, self.num + 1))
         else:
-            print('\t' * self.num_recurs + self.sequent)
+            print('\t' * self.num_recurs + 'node {}.{} = {}'.format(self.num_recurs, self.num + 1, self.sequent))
             if '~' in self.sequent:
                 self.negation_remover()
                 print('\t' * self.num_recurs + self.sequent)
             self.seq2base()
             print('\t' * self.num_recurs + self.sequent)
-            print('\t' * self.num_recurs + '{}'.format(self.rule_dict))
-            print('\t' * self.num_recurs + '{}'.format(self.inv_dict))
-
+            self.num_recurs += 1
             if self.sequent in self.rules:
                 print('\t' * self.num_recurs + '[solutions from rules]')
                 solutions = self.rules[self.sequent]
@@ -59,13 +57,11 @@ class Proofer():
             for solution in solutions:
                 self.sequent = self.base2seq(solution)
 
-                print('\n')
-                print('nodes checked = {}'.format(self.nodes_checked))
-                print('\n')
+                print('\nnodes checked = {}\n'.format(self.nodes_checked))
+
                 if self.num_recurs < 50:
                     if not (self.sequent in self.nodes_checked):
                         self.nodes_checked.append(self.base2seq(self.sequent))
-                        self.num_recurs += 1
                         self.pipeline()
                     else:
                         self.num_recurs -= 1
@@ -120,7 +116,6 @@ class Proofer():
                     side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][0], side[num_elt])
                     side[num_elt] = re.sub('\(|\)', '', side[num_elt])
                 else:
-                    # while dissolve[0] in side[num_elt]:
                     side[num_elt] = re.sub(dissolve[0], self.rule_dict[dissolve[0]][0], elt, 1)
                     side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][1], side[num_elt], 1)
 
@@ -160,13 +155,11 @@ class Proofer():
         for elt in chain.from_iterable(sequent):
             lens.append(len(elt))
             elts.append(elt)
-        print('elts = {}'.format(elts))
         if (len(set(lens)) == 1) and not(len(set(re.findall('[a-z]', ''.join(elts))))<=2):
             dissolve = random.sample(elts, 2)
         else:
             longest_elt = max(chain.from_iterable(sequent), key=len)
             dissolve = re.findall('\((.*?)\)', longest_elt)
-            print('dissolve = {}'.format(dissolve))
             if not dissolve:
                 dissolve = re.split(self.op, longest_elt)
 
@@ -182,9 +175,6 @@ class Proofer():
             else:
                 self.rule_dict[w1] = w2
                 self.inv_dict[w2] = w1
-        print('rule_dict =  {}'.format(self.rule_dict))
-        print('inv_dict = {}'.format(self.inv_dict))
-        print('dissolve = {}'.format(dissolve))
         return dissolve
 
     def sort_formulas(self, side, num_side):
@@ -201,7 +191,6 @@ class Proofer():
 
     def cut(self):
         sequent_to_cut = self.sequent.split(self.ss)
-        print('possible cuts = {}'.format(self.possible_cuts))
         self.cut_formula = '~' + self.possible_cuts[0]
         try:
             self.possible_cuts = self.possible_cuts[1:]
@@ -274,8 +263,8 @@ ss = '⇒'
 op = '≡'
 
 # test_seq = testSeqs[4]
-test_seq = '->(p=q)=(q=p)'
-# test_seq = '->p=p'
+# test_seq = '->(p=q)=(q=p)'
+test_seq = '->p=p'
 test_seq = seq_format(test_seq)
 obj = Proofer(test_seq, rulesNoise, ss, op)
 obj.pipeline()
@@ -300,4 +289,3 @@ obj.pipeline()
 #               'A,A≡B,G⇒D,B':    ['G⇒D,A,B,A≡B',
 #                                  'B,A≡B,G⇒D,A'],
 #               'G⇒D,A,B,A≡B':    'A,B,G⇒D,A≡B'}
-# TODO: something with cut
