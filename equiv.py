@@ -1,5 +1,6 @@
 import re
 from itertools import chain
+import random
 
 
 class Dictlist(dict):
@@ -11,12 +12,193 @@ class Dictlist(dict):
         self[key].append(value)
 
 
-def dictinvert(d):
-    inv = {}
-    for k, v in d.iteritems():
-        keys = inv.setdefault(v, [])
-        keys.append(k)
-    return inv
+class Proofer():
+    def __init__(self, sequent, rules, ss, op):
+        self.sequent = sequent
+        self.rules = rules
+        self.ss = ss
+        self.op = op
+        self.lang = 'ABΓΔ'
+        self.rule_dict = Dictlist()
+        self.inv_dict = {'A': '', 'B': ''}
+        self.cut_formula = ''
+        self.possible_cuts = 'AB'
+        self.num_recurs = 1
+        self.nodes_checked = []
+        self.num = 0
+
+    def pipeline(self):
+        if self.check_if_tautology():
+            self.num_recurs -= 1
+            print('\t' * self.num_recurs + '{} is tautology'.format(self.sequent))
+            print('\t' * self.num_recurs + 'node {}.{} is closed'.format(self.num_recurs, self.num + 1))
+        else:
+            print('\t' * self.num_recurs + 'node {}.{} = {}'.format(self.num_recurs, self.num + 1, self.sequent))
+            if '~' in self.sequent:
+                self.negation_remover()
+                print('\t' * self.num_recurs + self.sequent)
+            self.seq2base()
+            print('\t' * self.num_recurs + self.sequent)
+            self.num_recurs += 1
+            if self.sequent in self.rules:
+                print('\t' * self.num_recurs + '[solutions from rules]')
+                solutions = self.rules[self.sequent]
+            else:
+                print('\t' * self.num_recurs + '[no rules found]')
+                print('\t' * self.num_recurs + '[cut]')
+                solutions = self.cut()
+            if type(solutions) == str:
+                solutions = list(solutions)
+            print('\t' * self.num_recurs + '[solutions] = {}'.format(solutions))
+
+            for self.num, solution in enumerate(solutions):
+                print('node {}.{} = {}'.format(self.num_recurs, self.num + 1, self.base2seq(solution)))
+
+            for solution in solutions:
+                self.sequent = self.base2seq(solution)
+
+                print('\nnodes checked = {}\n'.format(self.nodes_checked))
+
+                if self.num_recurs < 50:
+                    if not (self.sequent in self.nodes_checked):
+                        self.nodes_checked.append(self.base2seq(self.sequent))
+                        self.pipeline()
+                    else:
+                        self.num_recurs -= 1
+
+    def check_if_tautology(self):
+        if set(re.split(',', self.sequent.split(self.ss)[0])) & set(re.split(',', self.sequent.split(self.ss)[1])):
+            return True
+        else:
+            return False
+
+    def negation_remover(self):
+        sequent = re.split(self.ss, self.sequent)
+        for rd in ['~[A-Za-z]', '~\((\(.*?\))\)', '~\((.*?)\)']:
+            for n, side in enumerate(sequent):
+                sequent = self.negs_replace(re.findall(rd, side), sequent, n)
+        self.sequent = ss.join(sequent)
+
+    def negs_replace(self, negs, sequent, n):
+        for neg in negs:
+            if len(neg) == 2:
+                if sequent[abs(n - 1)]:
+                    sequent[abs(n - 1)] += ',' + neg[1:]
+                else:
+                    sequent[abs(n - 1)] += neg[1:]
+                to_replace = neg
+            else:
+                if sequent[abs(n - 1)]:
+                    sequent[abs(n - 1)] += ',' + neg
+                else:
+                    sequent[abs(n - 1)] += neg
+                to_replace = '~(' + neg + ')'
+
+            sequent[n] = sequent[n].replace(to_replace, '')
+            sequent[n] = ','.join(filter(None, re.split(',', sequent[n])))
+
+        return sequent
+
+    def seq2base(self):
+        sequent = re.split(self.ss, self.sequent)
+
+        dissolve = self.update_dict(sequent)
+
+        for n, side in enumerate(sequent):
+            if n == 0:
+                noise = 'Γ'
+            else:
+                noise = 'Δ'
+
+            for num_elt, elt in enumerate(side):
+                if len(self.rule_dict) > 1:
+                    side[num_elt] = re.sub(dissolve[0], self.rule_dict[dissolve[0]][0], elt)
+                    side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][0], side[num_elt])
+                    side[num_elt] = re.sub('\(|\)', '', side[num_elt])
+                else:
+                    side[num_elt] = re.sub(dissolve[0], self.rule_dict[dissolve[0]][0], elt, 1)
+                    side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][1], side[num_elt], 1)
+
+                if not any(ch in side[num_elt] for ch in self.lang):
+                    if side[num_elt]:
+                        self.rule_dict[side[num_elt]] = noise
+                        self.inv_dict[noise] = side[num_elt]
+                    side[num_elt] = noise
+
+            sequent[n] = ','.join(side)
+            if not any(ch in sequent[n] for ch in 'ΓΔ'):
+                sequent[n] += ',' + noise
+            sequent[n] = self.sort_formulas(sequent[n], n)
+
+        self.sequent = self.ss.join(sequent)
+
+    def base2seq(self, solution):
+        for ch in 'ΓΔ':
+            if not ch in self.inv_dict:
+                self.inv_dict[ch] = ''
+        sol_seq = []
+        for elt in re.split(self.ss, multi_replace(self.inv_dict, solution)):
+            sol_side = []
+            for splt in re.split(',', elt):
+                if (len(re.findall('\((.*?)\)', splt)) == 1) and (not splt[0] == '~'):
+                    sol_side.append(re.sub('\(|\)', '', splt))
+                else:
+                    sol_side.append(splt)
+            sol_seq.append(','.join(filter(None, sol_side)))
+        return self.ss.join(sol_seq)
+
+    def update_dict(self, sequent):
+        for n, side in enumerate(sequent):
+            sequent[n] = re.split(',', side)
+        lens = []
+        elts = []
+        for elt in chain.from_iterable(sequent):
+            lens.append(len(elt))
+            elts.append(elt)
+        if (len(set(lens)) == 1) and not(len(set(re.findall('[a-z]', ''.join(elts))))<=2):
+            dissolve = random.sample(elts, 2)
+        else:
+            longest_elt = max(chain.from_iterable(sequent), key=len)
+            dissolve = re.findall('\((.*?)\)', longest_elt)
+            if not dissolve:
+                dissolve = re.split(self.op, longest_elt)
+
+        self.rule_dict = Dictlist()
+        for w1, w2 in zip(dissolve, self.lang[:len(dissolve)]):
+            if not (self.inv_dict[w2] == '(' + w1 + ')'):
+                if not (self.inv_dict[w2] == w1):
+                    self.possible_cuts = 'AB'
+
+            if len(w1) > 1:
+                self.rule_dict[w1] = w2
+                self.inv_dict[w2] = '(' + w1 + ')'
+            else:
+                self.rule_dict[w1] = w2
+                self.inv_dict[w2] = w1
+        return dissolve
+
+    def sort_formulas(self, side, num_side):
+        if num_side == 0:
+            sort_ord = {'A': 1, 'B': 2, 'A' + op + 'B': 3, 'Γ': 4}
+        else:
+            sort_ord = {'Δ': 1, 'A': 2, 'B': 3, 'A' + op + 'B': 4, 'B' + op + 'A': 5}
+        to_sort = re.split(',', side)
+        to_sort_num = []
+        for elt in to_sort:
+            to_sort_num.append(sort_ord[elt])
+        to_sort = zip(to_sort_num, to_sort)
+        return ','.join([x for _, x in sorted(to_sort)])
+
+    def cut(self):
+        sequent_to_cut = self.sequent.split(self.ss)
+        self.cut_formula = '~' + self.possible_cuts[0]
+        try:
+            self.possible_cuts = self.possible_cuts[1:]
+        except IndexError:
+            self.possible_cuts = ''
+        sequents_after_cut = [self.ss.join([sequent_to_cut[0], sequent_to_cut[1] + ',' + self.cut_formula]),
+                              self.ss.join([self.cut_formula + ',' + sequent_to_cut[0], sequent_to_cut[1]])]
+        return sequents_after_cut
 
 
 def multi_replace(dictionary, text):
@@ -32,117 +214,8 @@ def multi_replace(dictionary, text):
 
 def seq_format(sequent):
     dictionary = {'->': '⇒',
-                  '=':  '≡'}
+                  '=': '≡'}
     return multi_replace(dictionary, sequent)
-
-
-def negs_replace(negs, sequent, n):
-    for neg in negs:
-        if len(neg) == 2:
-            if sequent[abs(n - 1)]:
-                sequent[abs(n - 1)] += ',' + neg[1:]
-            else:
-                sequent[abs(n - 1)] += neg[1:]
-            to_replace = neg
-        else:
-            if sequent[abs(n - 1)]:
-                sequent[abs(n - 1)] += ',' + neg
-            else:
-                sequent[abs(n - 1)] += neg
-            to_replace = '~(' + neg + ')'
-
-        sequent[n] = sequent[n].replace(to_replace, '')
-        sequent[n] = sequent[n].replace(',,', ',')
-        if sequent[n]:
-            if sequent[n][0] == ',':
-                sequent[n] = sequent[n][1:]
-            if sequent[n][-1] == ',':
-                sequent[n] = sequent[n][:-1]
-
-    return sequent
-
-
-def negation_remover(sequent, ss):
-    sequent = re.split(ss, sequent)
-    regex_defs = ['~[A-Za-z]', '~\((\(.*?\))\)', '~\((.*?)\)']
-    for rd in regex_defs:
-        for n, side in enumerate(sequent):
-            negs = re.findall(rd, side)
-            sequent = negs_replace(negs, sequent, n)
-
-    return ss.join(sequent)
-
-
-def seq2rules(sequent, ss, op):
-    sequent = re.split(ss, sequent)
-
-    for n, side in enumerate(sequent):
-        sequent[n] = re.split(',', side)
-    longest_elt = max(chain.from_iterable(sequent), key=len)
-    dissolve = re.findall('\((.*?)\)', longest_elt)
-    if not dissolve:
-        dissolve = re.split(op, longest_elt)
-
-    rule_dict = Dictlist()
-    for w1, w2 in zip(dissolve, lang[:len(dissolve)]):
-        rule_dict[w1] = w2
-
-    for n, side in enumerate(sequent):
-        if n == 0:
-            noise = 'Γ'
-        else:
-            noise = 'Δ'
-
-        for num_elt, elt in enumerate(side):
-            if len(rule_dict) > 1:
-                side[num_elt] = re.sub(dissolve[0], rule_dict[dissolve[0]][0], elt)
-                side[num_elt] = re.sub(dissolve[1], rule_dict[dissolve[1]][0], side[num_elt])
-                side[num_elt] = re.sub('\(|\)', '', side[num_elt])
-            else:
-                while dissolve[0] in side[num_elt]:
-                    side[num_elt] = re.sub(dissolve[0], rule_dict[dissolve[0]][0], elt, 1)
-                    side[num_elt] = re.sub(dissolve[1], rule_dict[dissolve[1]][1], side[num_elt], 1)
-
-            if not any(ch in side[num_elt] for ch in lang):
-                if side[num_elt]:
-                    rule_dict[side[num_elt]] = noise
-                side[num_elt] = noise
-
-        sequent[n] = ','.join(side)
-        if not any(ch in sequent[n] for ch in 'ΓΔ'):
-            sequent[n] += ',' + noise
-        sequent[n] = sort_formulas(sequent[n], n)
-
-    return sequent, rule_dict
-
-
-def sort_formulas(side, num_side):
-    if num_side == 0:
-        sort_ord = {'A': 1, 'B': 2, 'A' + op + 'B': 3, 'Γ': 4}
-    else:
-        sort_ord = {'Δ': 1, 'A': 2, 'B': 3, 'A' + op + 'B': 4}
-    to_sort = re.split(',', side)
-    to_sort_num = []
-    for elt in to_sort:
-        to_sort_num.append(sort_ord[elt])
-    to_sort = zip(to_sort_num, to_sort)
-    return ','.join([x for _, x in sorted(to_sort)])
-
-
-def cut(sequent, ss):
-    possible_cuts = 'AB'
-    sequent_to_cut = sequent.split(ss)
-    sequents_after_cut = [ss.join([sequent_to_cut[0], sequent_to_cut[1] + ',~' + possible_cuts[0]]),
-                          ss.join(['~' + possible_cuts[0] + ',' + sequent_to_cut[0], sequent_to_cut[1]])]
-    solutions = []
-    for n in sequents_after_cut:
-        n_unsorted = negation_remover(n, ss=ss)
-        n_sorted = []
-        for num_side, n_side_unsorted in enumerate(re.split(ss, n_unsorted)):
-            n_sorted.append(sort_formulas(n_side_unsorted, num_side))
-        solutions.append(ss.join(n_sorted))
-
-    return solutions
 
 
 # '=' is the equivalence for the purpose of a user-friendly input
@@ -154,63 +227,48 @@ testSeqs = ['p->p=p',
             'p=q,p=r->(q=r)=(p=r)',
             'p=q->~(p=r),(q=r)=(p=r)',
             'p=q,~(p=r)->(q=r)=(p=r)']
-rulesNoise = {'B,A≡B,G⇒D':      ['A,B,G⇒D',
-                                 'A,A≡B,G⇒D'],
-              'G⇒D,A,A≡B':      ['B,G⇒D,A≡B',
-                                 'B,G⇒D,A'],
-              'G⇒D,B,A≡B':      ['A,G⇒D,A≡B',
-                                 'A,G⇒D,B'],
-              'B,G⇒D,A≡B':      ['B,G⇒D,A',
-                                 'G⇒D,A,A≡B'],
-              'A,G⇒D,A≡B':      ['A,G⇒D,B',
-                                 'G⇒D,B,A≡B'],
-              'A,G⇒D,B':        ['G⇒D,B,A≡B',
-                                 'A,G⇒D,A≡B'],
-              'A≡B,G⇒D,A':      ['A≡B,G⇒D,B',
-                                 'G⇒D,A,B'],
-              'A,A≡B,G⇒D':      ['A,B,G⇒D',
-                                 'B,A≡B,G⇒D'],
-              'A≡B,G⇒D,B':      ['G⇒D,A,B',
-                                 'A≡B,G⇒D,A'],
-              'A,B,G⇒D,A≡B':    ['A,A≡B,G⇒D,B',
-                                 'B,A≡B,G⇒D,A',
-                                 'G⇒D,A,B,A≡B'],
-              'B,A≡B,G⇒D,A':    ['G⇒D,A,B,A≡B',
-                                 'A,B,G⇒D,A≡B'],
-              'A,A≡B,G⇒D,B':    ['G⇒D,A,B,A≡B',
-                                 'B,A≡B,G⇒D,A',
-                                 'A,B,G⇒D,A≡B'],
-              'G⇒D,A,B,A≡B':    ['A,B,G⇒D,A≡B',
-                                 'B,A≡B,G⇒D,A'],
-              'A,B,G⇒D':        'B,A≡B,G⇒D',
-              'B,G⇒D,A':        ['G⇒D,A,A≡B',
-                                 'B,G⇒D,A≡B'],
-              'G⇒D,A,B':        'A≡B,G⇒D,B'}
-lang = 'ABΓΔ'
+rulesNoise = {'B,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ',
+                                 'A,A≡B,Γ⇒Δ'],
+              'Γ⇒Δ,A,A≡B':      ['B,Γ⇒Δ,A≡B',
+                                 'B,Γ⇒Δ,A'],
+              'Γ⇒Δ,B,A≡B':      ['A,Γ⇒Δ,A≡B',
+                                 'A,Γ⇒Δ,B'],
+              'B,Γ⇒Δ,A≡B':      ['B,Γ⇒Δ,A',
+                                 'Γ⇒Δ,A,A≡B'],
+              'A,Γ⇒Δ,A≡B':      ['A,Γ⇒Δ,B',
+                                 'Γ⇒Δ,B,A≡B'],
+              'A,Γ⇒Δ,B':        ['Γ⇒Δ,B,A≡B',
+                                 'A,Γ⇒Δ,A≡B'],
+              'A≡B,Γ⇒Δ,A':      ['A≡B,Γ⇒Δ,B',
+                                 'Γ⇒Δ,A,B'],
+              'A,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ',
+                                 'B,A≡B,Γ⇒Δ'],
+              'A≡B,Γ⇒Δ,B':      ['Γ⇒Δ,A,B',
+                                 'A≡B,Γ⇒Δ,A'],
+              'A,B,Γ⇒Δ,A≡B':    ['A,A≡B,Γ⇒Δ,B',
+                                 'B,A≡B,Γ⇒Δ,A',
+                                 'Γ⇒Δ,A,B,A≡B'],
+              'B,A≡B,Γ⇒Δ,A':    ['Γ⇒Δ,A,B,A≡B',
+                                 'A,B,Γ⇒Δ,A≡B'],
+              'A,A≡B,Γ⇒Δ,B':    ['Γ⇒Δ,A,B,A≡B',
+                                 'B,A≡B,Γ⇒Δ,A',
+                                 'A,B,Γ⇒Δ,A≡B'],
+              'Γ⇒Δ,A,B,A≡B':    ['A,B,Γ⇒Δ,A≡B',
+                                 'B,A≡B,Γ⇒Δ,A'],
+              'A,B,Γ⇒Δ':        'B,A≡B,Γ⇒Δ',
+              'B,Γ⇒Δ,A':        ['Γ⇒Δ,A,A≡B',
+                                 'B,Γ⇒Δ,A≡B'],
+              'Γ⇒Δ,A,B':        'A≡B,Γ⇒Δ,B'}
 ss = '⇒'
 op = '≡'
 
-# test_seq = testSeqs[0]
+# test_seq = testSeqs[4]
 # test_seq = '->(p=q)=(q=p)'
 test_seq = '->p=p'
 test_seq = seq_format(test_seq)
-print(test_seq)
-seq_step_1 = negation_remover(test_seq, ss=ss)
-sequent_signed, rule_dict = seq2rules(seq_step_1, ss=ss, op=op)
-print(rule_dict)
-sequent_signed = ss.join(sequent_signed)
-print('sequent_signed = {}'.format(sequent_signed))
-'''try compare and convert, except cut'''
-try:
-    print('rulesNoise[sequent_signed] = {}'.format(rulesNoise[sequent_signed]))
-    for solution in rulesNoise[sequent_signed]:
-        print('solution = {}\trules_noise[solution] = {}'.format(solution, rulesNoise[solution]))
-except KeyError:
-    solutions = cut(sequent_signed, ss)
-    print('solutions = {}'.format(solutions))
-print('\n')
+obj = Proofer(test_seq, rulesNoise, ss, op)
+obj.pipeline()
 
-# TODO: compare sequent with rules and convert to new form
 # TODO: save output to tex file
 #
 # rulesNoiseOneSided = {'B,A≡B,G⇒D':      ['A,B,G⇒D',
