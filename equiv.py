@@ -1,6 +1,8 @@
 import re
 from itertools import chain
 import random
+import matplotlib.pyplot as plt
+import networkx as nx
 
 
 class Dictlist(dict):
@@ -23,48 +25,71 @@ class Proofer():
         self.inv_dict = {'A': '', 'B': ''}
         self.cut_formula = ''
         self.possible_cuts = 'AB'
-        self.num_recurs = 1
         self.nodes_checked = []
-        self.num = 0
+        self.G = nx.DiGraph()
+        self.G.add_node('ROOT')
+        # self.level = 1
 
-    def pipeline(self):
+    def pipeline(self, level=1, actual_parent='ROOT'):
+        self.G.add_node(self.sequent)
+        self.G.add_edge(actual_parent, self.sequent)
+        # self.nodes_checked.append(self.sequent)
+        print('\n*************')
+        print('level = {}'.format(level))
+        print('sequent = {}'.format(self.sequent))
+        print('act_par = {}'.format(actual_parent))
+        print('*************\n')
         if self.check_if_tautology():
-            self.num_recurs -= 1
-            print('\t' * self.num_recurs + '{} is tautology'.format(self.sequent))
-            print('\t' * self.num_recurs + 'node {}.{} is closed'.format(self.num_recurs, self.num + 1))
+            print('{} is tautology'.format(self.sequent))
+            print('actual_parent = {}'.format(actual_parent))
+            print('node is closed')
+            # level -= 1
         else:
-            print('\t' * self.num_recurs + 'node {}.{} = {}'.format(self.num_recurs, self.num + 1, self.sequent))
+            self.nodes_checked.append('{}'.format(self.sequent))
+            print('node = {}'.format(self.sequent))
             if '~' in self.sequent:
+                actual_parent = self.sequent
                 self.negation_remover()
-                print('\t' * self.num_recurs + self.sequent)
+                self.G.add_node(self.sequent)
+                self.G.add_edge(actual_parent, self.sequent)
+                level += 1
+                self.nodes_checked.append('{}'.format(self.sequent))
+                print('\n*************')
+                print('level = {}'.format(level))
+                print('sequent = {}'.format(self.sequent))
+                print('act_par = {}'.format(actual_parent))
+                print('*************\n')
             self.seq2base()
-            print('\t' * self.num_recurs + self.sequent)
-            self.num_recurs += 1
+            print(self.sequent)
             if self.sequent in self.rules:
-                print('\t' * self.num_recurs + '[solutions from rules]')
+                print('[solutions from rules]')
                 solutions = self.rules[self.sequent]
             else:
-                print('\t' * self.num_recurs + '[no rules found]')
-                print('\t' * self.num_recurs + '[cut]')
+                print('[no rules found]')
+                print('[cut]')
                 solutions = self.cut()
             if type(solutions) == str:
                 solutions = list(solutions)
-            print('\t' * self.num_recurs + '[solutions] = {}'.format(solutions))
+            print('[solutions] = {}'.format(solutions))
 
-            for self.num, solution in enumerate(solutions):
-                print('node {}.{} = {}'.format(self.num_recurs, self.num + 1, self.base2seq(solution)))
-
+            for solution in solutions:
+                print('node = {}'.format(self.base2seq(solution)))
+            actual_parent = self.base2seq(self.sequent)
+            level += 1
             for solution in solutions:
                 self.sequent = self.base2seq(solution)
 
-                print('\nnodes checked = {}\n'.format(self.nodes_checked))
+                if not (self.sequent in self.nodes_checked):
+                    self.pipeline(level, actual_parent)
+                else:
+                    self.G.add_node(self.sequent)
+                    self.G.add_edge(actual_parent, self.sequent)
+                    print('\n*************')
+                    print('node {} already checked'.format(self.sequent))
+                    print('level = {}'.format(level))
+                    print('*************\n')
 
-                if self.num_recurs < 50:
-                    if not (self.sequent in self.nodes_checked):
-                        self.nodes_checked.append(self.base2seq(self.sequent))
-                        self.pipeline()
-                    else:
-                        self.num_recurs -= 1
+
 
     def check_if_tautology(self):
         if set(re.split(',', self.sequent.split(self.ss)[0])) & set(re.split(',', self.sequent.split(self.ss)[1])):
@@ -268,6 +293,8 @@ test_seq = '->p=p'
 test_seq = seq_format(test_seq)
 obj = Proofer(test_seq, rulesNoise, ss, op)
 obj.pipeline()
+nx.draw(obj.G, with_labels=True)
+plt.show()
 
 # TODO: save output to tex file
 #
