@@ -1,9 +1,10 @@
 # Distributive Deductive Systems
 Automatic proofer v1.0
  
-# Requirements:
+## Requirements:
 * Python 3.x
-* NetworkX
+* NetworkX (https://networkx.github.io/)
+  * >pip install networkx 
 
-# Acknowledgements:
+## Acknowledgements:
 Project funded by National Science Centre (grant no. 2017/26/E/HS1/00127)
