@@ -28,25 +28,26 @@ class Proofer():
         self.nodes_checked = []
         self.G = nx.DiGraph()
         self.G.add_node('ROOT')
-        # self.level = 1
 
     def pipeline(self, level=1, actual_parent='ROOT'):
         self.G.add_node(self.sequent)
         self.G.add_edge(actual_parent, self.sequent)
-        # self.nodes_checked.append(self.sequent)
         print('\n*************')
         print('level = {}'.format(level))
         print('sequent = {}'.format(self.sequent))
-        print('act_par = {}'.format(actual_parent))
+        print('current parent = {}'.format(actual_parent))
         print('*************\n')
+
         if self.check_if_tautology():
+            print('\n*************')
             print('{} is tautology'.format(self.sequent))
-            print('actual_parent = {}'.format(actual_parent))
+            print('current parent = {}'.format(actual_parent))
             print('node is closed')
-            # level -= 1
+            print('*************\n')
+
         else:
             self.nodes_checked.append('{}'.format(self.sequent))
-            print('node = {}'.format(self.sequent))
+
             if '~' in self.sequent:
                 actual_parent = self.sequent
                 self.negation_remover()
@@ -55,12 +56,18 @@ class Proofer():
                 level += 1
                 self.nodes_checked.append('{}'.format(self.sequent))
                 print('\n*************')
+                print('[negation removed]')
                 print('level = {}'.format(level))
                 print('sequent = {}'.format(self.sequent))
-                print('act_par = {}'.format(actual_parent))
+                print('current parent = {}'.format(actual_parent))
                 print('*************\n')
+
             self.seq2base()
-            print(self.sequent)
+
+            print('\n*************')
+            print('sequent fitted = {}'.format(self.sequent))
+            print('fitting dict = {}'.format(self.rule_dict))
+
             if self.sequent in self.rules:
                 print('[solutions from rules]')
                 solutions = self.rules[self.sequent]
@@ -68,17 +75,21 @@ class Proofer():
                 print('[no rules found]')
                 print('[cut]')
                 solutions = self.cut()
+
             if type(solutions) == str:
                 solutions = list(solutions)
-            print('[solutions] = {}'.format(solutions))
 
-            for solution in solutions:
-                print('node = {}'.format(self.base2seq(solution)))
+            print('[solutions fitted] = {}'.format(solutions))
+
+            for n_sol, solution in enumerate(solutions):
+                print('solution {} = {}'.format(n_sol+1, self.base2seq(solution)))
+            print('*************\n')
+
             actual_parent = self.base2seq(self.sequent)
             level += 1
+
             for solution in solutions:
                 self.sequent = self.base2seq(solution)
-
                 if not (self.sequent in self.nodes_checked):
                     self.pipeline(level, actual_parent)
                 else:
@@ -88,8 +99,6 @@ class Proofer():
                     print('node {} already checked'.format(self.sequent))
                     print('level = {}'.format(level))
                     print('*************\n')
-
-
 
     def check_if_tautology(self):
         if set(re.split(',', self.sequent.split(self.ss)[0])) & set(re.split(',', self.sequent.split(self.ss)[1])):
