@@ -1,8 +1,12 @@
-import re
 from itertools import chain
 import random
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
+from utils import *
 import networkx as nx
+
+# TODO: output list of 2-elt lists [solution, num_rule]
+# TODO: analiza statystyczna zbiorów nieskończonych / definicja przestrzeni probabilistycznej?
+# TODO: Zajonc, Kostrzycka
 
 
 class Dictlist(dict):
@@ -14,7 +18,7 @@ class Dictlist(dict):
         self[key].append(value)
 
 
-class Proofer():
+class Proofer:
     def __init__(self, sequent, rules, ss, op):
         self.sequent = sequent
         self.rules = rules
@@ -28,22 +32,38 @@ class Proofer():
         self.nodes_checked = []
         self.G = nx.DiGraph()
         self.G.add_node('ROOT')
+        self.ax_from_rules = False
+        self.last_known_axiom = ''
+        # self.output = [[self.sequent, 'ROOT']]
+        self.output = []
 
-    def pipeline(self, level=1, actual_parent='ROOT'):
+    def pipeline(self, level=1, actual_parent='ROOT', rules_flag=False):
         self.G.add_node(self.sequent)
         self.G.add_edge(actual_parent, self.sequent)
-        print('\n*************')
-        print('level = {}'.format(level))
-        print('sequent = {}'.format(self.sequent))
-        print('current parent = {}'.format(actual_parent))
-        print('*************\n')
+        # print('\n*************')
+        # print('level = {}'.format(level))
+        # print('sequent = {}'.format(self.sequent))
+        # print('current parent = {}'.format(actual_parent))
+        # print('*************\n')
 
-        if self.check_if_tautology():
-            print('\n*************')
-            print('{} is tautology'.format(self.sequent))
-            print('current parent = {}'.format(actual_parent))
-            print('node is closed')
-            print('*************\n')
+        if self.check_if_axiom():
+            # print('\n*************')
+            # print('{} is axiom'.format(self.sequent))
+            # print('current parent = {}'.format(actual_parent))
+            # print('node is closed')
+            # print('*************\n')
+            if rules_flag:
+                self.ax_from_rules = True
+                self.last_known_axiom = self.sequent
+            # self.output.append([self.sequent, 'AXIOM'])
+
+        elif self.ax_from_rules and rules_flag:
+            pass
+        #     print('\n*************')
+        #     print('Already found axiom {} from rules'.format(self.sequent))
+        #     print('current parent = {}'.format(actual_parent))
+        #     print('node is closed')
+        #     print('*************\n')
 
         else:
             self.nodes_checked.append('{}'.format(self.sequent))
@@ -51,56 +71,66 @@ class Proofer():
             if '~' in self.sequent:
                 actual_parent = self.sequent
                 self.negation_remover()
+                # self.output.append([self.sequent, 'NEG_REM'])
                 self.G.add_node(self.sequent)
                 self.G.add_edge(actual_parent, self.sequent)
                 level += 1
                 self.nodes_checked.append('{}'.format(self.sequent))
-                print('\n*************')
-                print('[negation removed]')
-                print('level = {}'.format(level))
-                print('sequent = {}'.format(self.sequent))
-                print('current parent = {}'.format(actual_parent))
-                print('*************\n')
+                # print('\n*************')
+                # print('[negation removed]')
+                # print('level = {}'.format(level))
+                # print('sequent = {}'.format(self.sequent))
+                # print('current parent = {}'.format(actual_parent))
+                # print('*************\n')
 
             self.seq2base()
 
-            print('\n*************')
-            print('sequent fitted = {}'.format(self.sequent))
-            print('fitting dict = {}'.format(self.rule_dict))
+            # print('\n*************')
+            # print('sequent fitted = {}'.format(self.sequent))
+            # print('fitting dict = {}'.format(self.rule_dict))
 
+            num_rules = []
             if self.sequent in self.rules:
-                print('[solutions from rules]')
+                # print('[solutions from rules]')
                 solutions = self.rules[self.sequent]
+                for num_sol, solution in enumerate(solutions):
+                    num_rules.append(solution[-2:])
+                    solutions[num_sol] = solution[:-3]
+                rules_flag = True
             else:
-                print('[no rules found]')
-                print('[cut]')
+                # print('[no rules found]')
+                # print('[cut]')
                 solutions = self.cut()
+                # num_rules = ['CUT', 'CUT']
 
             if type(solutions) == str:
                 solutions = list(solutions)
 
-            print('[solutions fitted] = {}'.format(solutions))
+            # print('[solutions fitted] = {}'.format(solutions))
 
-            for n_sol, solution in enumerate(solutions):
-                print('solution {} = {}'.format(n_sol+1, self.base2seq(solution)))
-            print('*************\n')
+            # for n_sol, solution in enumerate(solutions):
+            #     print('solution {} = {}'.format(n_sol+1, self.base2seq(solution)))
+            # print('*************\n')
 
             actual_parent = self.base2seq(self.sequent)
             level += 1
 
-            for solution in solutions:
+            for n_sol, solution in enumerate(solutions):
                 self.sequent = self.base2seq(solution)
                 if not (self.sequent in self.nodes_checked):
-                    self.pipeline(level, actual_parent)
+                    if num_rules:
+                        self.output.append([self.sequent, num_rules[n_sol]])
+                    self.pipeline(level, actual_parent, rules_flag)
                 else:
+                    # self.output.append([self.sequent, 'CHECKED'])
                     self.G.add_node(self.sequent)
                     self.G.add_edge(actual_parent, self.sequent)
-                    print('\n*************')
-                    print('node {} already checked'.format(self.sequent))
-                    print('level = {}'.format(level))
-                    print('*************\n')
+                    # print('\n*************')
+                    # print('node {} already checked'.format(self.sequent))
+                    # print('level = {}'.format(level))
+                    # print('*************\n')
 
-    def check_if_tautology(self):
+    def check_if_axiom(self):
         if set(re.split(',', self.sequent.split(self.ss)[0])) & set(re.split(',', self.sequent.split(self.ss)[1])):
             return True
         else:
@@ -110,28 +140,8 @@ class Proofer():
         sequent = re.split(self.ss, self.sequent)
         for rd in ['~[A-Za-z]', '~\((\(.*?\))\)', '~\((.*?)\)']:
             for n, side in enumerate(sequent):
-                sequent = self.negs_replace(re.findall(rd, side), sequent, n)
+                sequent = negs_replace(re.findall(rd, side), sequent, n)
         self.sequent = ss.join(sequent)
-
-    def negs_replace(self, negs, sequent, n):
-        for neg in negs:
-            if len(neg) == 2:
-                if sequent[abs(n - 1)]:
-                    sequent[abs(n - 1)] += ',' + neg[1:]
-                else:
-                    sequent[abs(n - 1)] += neg[1:]
-                to_replace = neg
-            else:
-                if sequent[abs(n - 1)]:
-                    sequent[abs(n - 1)] += ',' + neg
-                else:
-                    sequent[abs(n - 1)] += neg
-                to_replace = '~(' + neg + ')'
-
-            sequent[n] = sequent[n].replace(to_replace, '')
-            sequent[n] = ','.join(filter(None, re.split(',', sequent[n])))
-
-        return sequent
 
     def seq2base(self):
         sequent = re.split(self.ss, self.sequent)
@@ -162,13 +172,13 @@ class Proofer():
             sequent[n] = ','.join(side)
             if not any(ch in sequent[n] for ch in 'ΓΔ'):
                 sequent[n] += ',' + noise
-            sequent[n] = self.sort_formulas(sequent[n], n)
+            sequent[n] = sort_formulas(sequent[n], n, self.op)
 
         self.sequent = self.ss.join(sequent)
 
     def base2seq(self, solution):
         for ch in 'ΓΔ':
-            if not ch in self.inv_dict:
+            if ch not in self.inv_dict:
                 self.inv_dict[ch] = ''
         sol_seq = []
         for elt in re.split(self.ss, multi_replace(self.inv_dict, solution)):
@@ -189,7 +199,7 @@ class Proofer():
         for elt in chain.from_iterable(sequent):
             lens.append(len(elt))
             elts.append(elt)
-        if (len(set(lens)) == 1) and not(len(set(re.findall('[a-z]', ''.join(elts))))<=2):
+        if (len(set(lens)) == 1) and not(len(set(re.findall('[a-z]', ''.join(elts)))) <= 2):
             dissolve = random.sample(elts, 2)
         else:
             longest_elt = max(chain.from_iterable(sequent), key=len)
@@ -211,18 +221,6 @@ class Proofer():
                 self.inv_dict[w2] = w1
         return dissolve
 
-    def sort_formulas(self, side, num_side):
-        if num_side == 0:
-            sort_ord = {'A': 1, 'B': 2, 'A' + op + 'B': 3, 'Γ': 4}
-        else:
-            sort_ord = {'Δ': 1, 'A': 2, 'B': 3, 'A' + op + 'B': 4, 'B' + op + 'A': 5}
-        to_sort = re.split(',', side)
-        to_sort_num = []
-        for elt in to_sort:
-            to_sort_num.append(sort_ord[elt])
-        to_sort = zip(to_sort_num, to_sort)
-        return ','.join([x for _, x in sorted(to_sort)])
-
     def cut(self):
         sequent_to_cut = self.sequent.split(self.ss)
         self.cut_formula = '~' + self.possible_cuts[0]
@@ -235,23 +233,6 @@ class Proofer():
         return sequents_after_cut
 
 
-def multi_replace(dictionary, text):
-    """
-    http://code.activestate.com/recipes/81330-single-pass-multiple-replace/
-    :param dictionary:  dict of keys to be replaced by respective values
-    :param text:        input string on which we perform replacement
-    :return:            string with replaced values
-    """
-    regex = re.compile('(%s)' % '|'.join(map(re.escape, dictionary.keys())))
-    return regex.sub(lambda mo: dictionary[mo.string[mo.start():mo.end()]], text)
-
-
-def seq_format(sequent):
-    dictionary = {'->': '⇒',
-                  '=': '≡'}
-    return multi_replace(dictionary, sequent)
-
-
 # '=' is the equivalence for the purpose of a user-friendly input
 testSeqs = ['p->p=p',
             '->p=p,p',
@@ -261,49 +242,56 @@ testSeqs = ['p->p=p',
             'p=q,p=r->(q=r)=(p=r)',
             'p=q->~(p=r),(q=r)=(p=r)',
             'p=q,~(p=r)->(q=r)=(p=r)']
-rulesNoise = {'B,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ',
-                                 'A,A≡B,Γ⇒Δ'],
-              'Γ⇒Δ,A,A≡B':      ['B,Γ⇒Δ,A≡B',
-                                 'B,Γ⇒Δ,A'],
-              'Γ⇒Δ,B,A≡B':      ['A,Γ⇒Δ,A≡B',
-                                 'A,Γ⇒Δ,B'],
-              'B,Γ⇒Δ,A≡B':      ['B,Γ⇒Δ,A',
-                                 'Γ⇒Δ,A,A≡B'],
-              'A,Γ⇒Δ,A≡B':      ['A,Γ⇒Δ,B',
-                                 'Γ⇒Δ,B,A≡B'],
-              'A,Γ⇒Δ,B':        ['Γ⇒Δ,B,A≡B',
-                                 'A,Γ⇒Δ,A≡B'],
-              'A≡B,Γ⇒Δ,A':      ['A≡B,Γ⇒Δ,B',
-                                 'Γ⇒Δ,A,B'],
-              'A,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ',
-                                 'B,A≡B,Γ⇒Δ'],
-              'A≡B,Γ⇒Δ,B':      ['Γ⇒Δ,A,B',
-                                 'A≡B,Γ⇒Δ,A'],
-              'A,B,Γ⇒Δ,A≡B':    ['A,A≡B,Γ⇒Δ,B',
-                                 'B,A≡B,Γ⇒Δ,A',
-                                 'Γ⇒Δ,A,B,A≡B'],
-              'B,A≡B,Γ⇒Δ,A':    ['Γ⇒Δ,A,B,A≡B',
-                                 'A,B,Γ⇒Δ,A≡B'],
-              'A,A≡B,Γ⇒Δ,B':    ['Γ⇒Δ,A,B,A≡B',
-                                 'B,A≡B,Γ⇒Δ,A',
-                                 'A,B,Γ⇒Δ,A≡B'],
-              'Γ⇒Δ,A,B,A≡B':    ['A,B,Γ⇒Δ,A≡B',
-                                 'B,A≡B,Γ⇒Δ,A'],
-              'A,B,Γ⇒Δ':        'B,A≡B,Γ⇒Δ',
-              'B,Γ⇒Δ,A':        ['Γ⇒Δ,A,A≡B',
-                                 'B,Γ⇒Δ,A≡B'],
-              'Γ⇒Δ,A,B':        'A≡B,Γ⇒Δ,B'}
+rulesNoise = {'B,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ 01',
+                                 'A,A≡B,Γ⇒Δ 02'],
+              'Γ⇒Δ,A,A≡B':      ['B,Γ⇒Δ,A≡B 03',
+                                 'B,Γ⇒Δ,A 04'],
+              'Γ⇒Δ,B,A≡B':      ['A,Γ⇒Δ,A≡B 05',
+                                 'A,Γ⇒Δ,B 06'],
+              'B,Γ⇒Δ,A≡B':      ['B,Γ⇒Δ,A 07',
+                                 'Γ⇒Δ,A,A≡B 08'],
+              'A,Γ⇒Δ,A≡B':      ['A,Γ⇒Δ,B 09',
+                                 'Γ⇒Δ,B,A≡B 10'],
+              'A,Γ⇒Δ,B':        ['Γ⇒Δ,B,A≡B 11',
+                                 'A,Γ⇒Δ,A≡B 12'],
+              'A≡B,Γ⇒Δ,A':      ['A≡B,Γ⇒Δ,B 13',
+                                 'Γ⇒Δ,A,B 14'],
+              'A,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ 15',
+                                 'B,A≡B,Γ⇒Δ 16'],
+              'A≡B,Γ⇒Δ,B':      ['Γ⇒Δ,A,B 17',
+                                 'A≡B,Γ⇒Δ,A 18'],
+              'A,B,Γ⇒Δ,A≡B':    ['A,A≡B,Γ⇒Δ,B 19',
+                                 'B,A≡B,Γ⇒Δ,A 20',
+                                 'Γ⇒Δ,A,B,A≡B 21'],
+              'B,A≡B,Γ⇒Δ,A':    ['Γ⇒Δ,A,B,A≡B 22',
+                                 'A,B,Γ⇒Δ,A≡B 23'],
+              'A,A≡B,Γ⇒Δ,B':    ['Γ⇒Δ,A,B,A≡B 24',
+                                 'B,A≡B,Γ⇒Δ,A 25',
+                                 'A,B,Γ⇒Δ,A≡B 26'],
+              'Γ⇒Δ,A,B,A≡B':    ['A,B,Γ⇒Δ,A≡B 27',
+                                 'B,A≡B,Γ⇒Δ,A 28'],
+              'A,B,Γ⇒Δ':        ['B,A≡B,Γ⇒Δ 29'],
+              'B,Γ⇒Δ,A':        ['Γ⇒Δ,A,A≡B 30',
+                                 'B,Γ⇒Δ,A≡B 31'],
+              'Γ⇒Δ,A,B':        ['A≡B,Γ⇒Δ,B 32']}
 ss = '⇒'
 op = '≡'
 
 # test_seq = testSeqs[4]
 # test_seq = '->(p=q)=(q=p)'
+# test_seq = 'p->p=p'
+# test_seq = 'p=q->p=r,(p=r)=(q=r)'
 test_seq = '->p=p'
+# test_seq = '->(p=q)=(q=q)' #cut p, rule_dict error B=B
+# test_seq = '->(p=q)=(p=r)'
+
 test_seq = seq_format(test_seq)
 obj = Proofer(test_seq, rulesNoise, ss, op)
 obj.pipeline()
-nx.draw(obj.G, with_labels=True)
-plt.show()
+for line in obj.output:
+    print(line)
+# nx.draw(obj.G, with_labels=True)
+# plt.show()
 
 # TODO: save output to tex file
 #
