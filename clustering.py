@@ -1,19 +1,24 @@
 import pandas as pd
-from leven import levenshtein
-# import numpy as np
-from sklearn.cluster import DBSCAN
+import collections
+from sklearn.cluster import KMeans
+from pprint import pprint
 from sklearn.feature_extraction.text import HashingVectorizer
-
-
-def lev_metric(x, y):
-    i, j = int(x[0]), int(y[0])
-    return levenshtein(formulas[i], formulas[j])
+import numpy as np
 
 
 data = pd.read_csv('out.csv', sep=',')
-formulas = data['formula'][:100]
-vectorizer = HashingVectorizer(n_features=2**4)
+formulas = data['formula'].sample(n=200, random_state=1)
+vectorizer = HashingVectorizer(n_features=2**4,
+                               ngram_range=(1, 3),
+                               analyzer='char')
 X = vectorizer.fit_transform(formulas)
-clustering = DBSCAN(eps=5, min_samples=2).fit(X)
-# X = np.arange(len(formulas)).reshape(-1, 1)
-# dbscan(X, metric=lev_metric, eps=5, min_samples=2)
+km_model = KMeans(n_clusters=10)
+km_model.fit(X)
+clustering = collections.defaultdict(list)
+
+formulas_np = formulas.to_numpy()
+
+for idx, label in enumerate(km_model.labels_):
+    clustering[label].append(formulas_np[idx])
+
+pprint(dict(clustering))
