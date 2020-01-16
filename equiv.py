@@ -1,5 +1,8 @@
 import re
 from itertools import chain
+import random
+import matplotlib.pyplot as plt
+import networkx as nx
 
 
 class Dictlist(dict):
@@ -19,54 +22,83 @@ class Proofer():
         self.op = op
         self.lang = 'ABΓΔ'
         self.rule_dict = Dictlist()
-        self.inv_dict = {}
+        self.inv_dict = {'A': '', 'B': ''}
         self.cut_formula = ''
         self.possible_cuts = 'AB'
-        self.num_recurs = 1
         self.nodes_checked = []
-        self.num = 0
+        self.G = nx.DiGraph()
+        self.G.add_node('ROOT')
 
-    def pipeline(self):
+    def pipeline(self, level=1, actual_parent='ROOT'):
+        self.G.add_node(self.sequent)
+        self.G.add_edge(actual_parent, self.sequent)
+        print('\n*************')
+        print('level = {}'.format(level))
+        print('sequent = {}'.format(self.sequent))
+        print('current parent = {}'.format(actual_parent))
+        print('*************\n')
+
         if self.check_if_tautology():
-            self.num_recurs -= 1
-            print('\t' * self.num_recurs + '{} is tautology'.format(self.sequent))
-            print('\t' * self.num_recurs + 'node {}.{} is closed'.format(self.num_recurs, self.num + 1))
+            print('\n*************')
+            print('{} is tautology'.format(self.sequent))
+            print('current parent = {}'.format(actual_parent))
+            print('node is closed')
+            print('*************\n')
+
         else:
-            print('\t' * self.num_recurs + self.sequent)
+            self.nodes_checked.append('{}'.format(self.sequent))
+
             if '~' in self.sequent:
+                actual_parent = self.sequent
                 self.negation_remover()
-                print('\t' * self.num_recurs + self.sequent)
+                self.G.add_node(self.sequent)
+                self.G.add_edge(actual_parent, self.sequent)
+                level += 1
+                self.nodes_checked.append('{}'.format(self.sequent))
+                print('\n*************')
+                print('[negation removed]')
+                print('level = {}'.format(level))
+                print('sequent = {}'.format(self.sequent))
+                print('current parent = {}'.format(actual_parent))
+                print('*************\n')
+
             self.seq2base()
-            print('\t' * self.num_recurs + self.sequent)
-            print('\t' * self.num_recurs + '{}'.format(self.rule_dict))
-            print('\t' * self.num_recurs + '{}'.format(self.inv_dict))
+
+            print('\n*************')
+            print('sequent fitted = {}'.format(self.sequent))
+            print('fitting dict = {}'.format(self.rule_dict))
 
             if self.sequent in self.rules:
-                print('\t' * self.num_recurs + '[solutions from rules]')
+                print('[solutions from rules]')
                 solutions = self.rules[self.sequent]
             else:
-                print('\t' * self.num_recurs + '[no rules found]')
-                print('\t' * self.num_recurs + '[cut]')
+                print('[no rules found]')
+                print('[cut]')
                 solutions = self.cut()
 
-            print('\t' * self.num_recurs + '[solutions] = {}'.format(solutions))
+            if type(solutions) == str:
+                solutions = list(solutions)
 
-            for self.num, solution in enumerate(solutions):
-                print('node {}.{} = {}'.format(self.num_recurs, self.num + 1, self.base2seq(solution)))
+            print('[solutions fitted] = {}'.format(solutions))
+
+            for n_sol, solution in enumerate(solutions):
+                print('solution {} = {}'.format(n_sol+1, self.base2seq(solution)))
+            print('*************\n')
+
+            actual_parent = self.base2seq(self.sequent)
+            level += 1
 
             for solution in solutions:
                 self.sequent = self.base2seq(solution)
-
-                print('\n')
-                print('nodes checked = {}'.format(self.nodes_checked))
-                print('\n')
-                if self.num_recurs < 50:
-                    if not (self.sequent in self.nodes_checked):
-                        self.nodes_checked.append(self.base2seq(self.sequent))
-                        self.num_recurs += 1
-                        self.pipeline()
-                    else:
-                        self.num_recurs -= 1
+                if not (self.sequent in self.nodes_checked):
+                    self.pipeline(level, actual_parent)
+                else:
+                    self.G.add_node(self.sequent)
+                    self.G.add_edge(actual_parent, self.sequent)
+                    print('\n*************')
+                    print('node {} already checked'.format(self.sequent))
+                    print('level = {}'.format(level))
+                    print('*************\n')
 
     def check_if_tautology(self):
         if set(re.split(',', self.sequent.split(self.ss)[0])) & set(re.split(',', self.sequent.split(self.ss)[1])):
@@ -104,25 +136,8 @@ class Proofer():
     def seq2base(self):
         sequent = re.split(self.ss, self.sequent)
 
-        for n, side in enumerate(sequent):
-            sequent[n] = re.split(',', side)
+        dissolve = self.update_dict(sequent)
 
-        longest_elt = max(chain.from_iterable(sequent), key=len)
-        dissolve = re.findall('\((.*?)\)', longest_elt)
-        if not dissolve:
-            dissolve = re.split(self.op, longest_elt)
-
-        self.rule_dict = Dictlist()
-        for w1, w2 in zip(dissolve, self.lang[:len(dissolve)]):
-            if len(w1) > 1:
-                self.rule_dict[w1] = w2
-                self.inv_dict[w2] = '(' + w1 + ')'
-            else:
-                self.rule_dict[w1] = w2
-                self.inv_dict[w2] = w1
-        print(self.rule_dict)
-        print(self.inv_dict)
-        print(dissolve)
         for n, side in enumerate(sequent):
             if n == 0:
                 noise = 'Γ'
@@ -135,9 +150,8 @@ class Proofer():
                     side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][0], side[num_elt])
                     side[num_elt] = re.sub('\(|\)', '', side[num_elt])
                 else:
-                    # while dissolve[0] in side[num_elt]:
                     side[num_elt] = re.sub(dissolve[0], self.rule_dict[dissolve[0]][0], elt, 1)
-                        # side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][1], side[num_elt], 1)
+                    side[num_elt] = re.sub(dissolve[1], self.rule_dict[dissolve[1]][1], side[num_elt], 1)
 
                 if not any(ch in side[num_elt] for ch in self.lang):
                     if side[num_elt]:
@@ -158,14 +172,50 @@ class Proofer():
                 self.inv_dict[ch] = ''
         sol_seq = []
         for elt in re.split(self.ss, multi_replace(self.inv_dict, solution)):
-            sol_seq.append(','.join(filter(None, re.split(',', elt))))
+            sol_side = []
+            for splt in re.split(',', elt):
+                if (len(re.findall('\((.*?)\)', splt)) == 1) and (not splt[0] == '~'):
+                    sol_side.append(re.sub('\(|\)', '', splt))
+                else:
+                    sol_side.append(splt)
+            sol_seq.append(','.join(filter(None, sol_side)))
         return self.ss.join(sol_seq)
+
+    def update_dict(self, sequent):
+        for n, side in enumerate(sequent):
+            sequent[n] = re.split(',', side)
+        lens = []
+        elts = []
+        for elt in chain.from_iterable(sequent):
+            lens.append(len(elt))
+            elts.append(elt)
+        if (len(set(lens)) == 1) and not(len(set(re.findall('[a-z]', ''.join(elts))))<=2):
+            dissolve = random.sample(elts, 2)
+        else:
+            longest_elt = max(chain.from_iterable(sequent), key=len)
+            dissolve = re.findall('\((.*?)\)', longest_elt)
+            if not dissolve:
+                dissolve = re.split(self.op, longest_elt)
+
+        self.rule_dict = Dictlist()
+        for w1, w2 in zip(dissolve, self.lang[:len(dissolve)]):
+            if not (self.inv_dict[w2] == '(' + w1 + ')'):
+                if not (self.inv_dict[w2] == w1):
+                    self.possible_cuts = 'AB'
+
+            if len(w1) > 1:
+                self.rule_dict[w1] = w2
+                self.inv_dict[w2] = '(' + w1 + ')'
+            else:
+                self.rule_dict[w1] = w2
+                self.inv_dict[w2] = w1
+        return dissolve
 
     def sort_formulas(self, side, num_side):
         if num_side == 0:
             sort_ord = {'A': 1, 'B': 2, 'A' + op + 'B': 3, 'Γ': 4}
         else:
-            sort_ord = {'Δ': 1, 'A': 2, 'B': 3, 'A' + op + 'B': 4}
+            sort_ord = {'Δ': 1, 'A': 2, 'B': 3, 'A' + op + 'B': 4, 'B' + op + 'A': 5}
         to_sort = re.split(',', side)
         to_sort_num = []
         for elt in to_sort:
@@ -246,12 +296,14 @@ rulesNoise = {'B,A≡B,Γ⇒Δ':      ['A,B,Γ⇒Δ',
 ss = '⇒'
 op = '≡'
 
-test_seq = testSeqs[4]
+# test_seq = testSeqs[4]
 # test_seq = '->(p=q)=(q=p)'
-# test_seq = '->p=p'
+test_seq = '->p=p'
 test_seq = seq_format(test_seq)
 obj = Proofer(test_seq, rulesNoise, ss, op)
 obj.pipeline()
+nx.draw(obj.G, with_labels=True)
+plt.show()
 
 # TODO: save output to tex file
 #
