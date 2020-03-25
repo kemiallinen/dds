@@ -3,6 +3,7 @@ from itertools import chain
 import random
 import matplotlib.pyplot as plt
 import networkx as nx
+# from networkx.drawing.nx_agraph import graphviz_layout
 
 
 class Dictlist(dict):
@@ -196,7 +197,7 @@ class Proofer():
             dissolve = re.findall('\((.*?)\)', longest_elt)
             if not dissolve:
                 dissolve = re.split(self.op, longest_elt)
-
+        dissolve = dissolve[::-1]
         self.rule_dict = Dictlist()
         for w1, w2 in zip(dissolve, self.lang[:len(dissolve)]):
             if not (self.inv_dict[w2] == '(' + w1 + ')'):
@@ -302,6 +303,13 @@ test_seq = '->p=p'
 test_seq = seq_format(test_seq)
 obj = Proofer(test_seq, rulesNoise, ss, op)
 obj.pipeline()
+
+# nx.nx_agraph.write_dot(obj.G, 'test.dot')
+
+# same layout using matplotlib with no labels
+# plt.title('draw_networkx')
+# pos = graphviz_layout(obj.G, prog='dot')
+# nx.draw(obj.G, pos, with_labels=False, arrows=False)
 nx.draw(obj.G, with_labels=True)
 plt.show()
 
