@@ -1,4 +1,5 @@
 import re
+import networkx as nx
 
 
 def multi_replace(dictionary, text):
@@ -35,27 +36,57 @@ def split_by_connective(s, conn):
     return [s[:slice_at], s[slice_at+1:]]
 
 
-class aaProver:
+class Prover:
     def __init__(self, sequent):
         self.sequent = seq_format(sequent)
         self.ss = '⇒'
         self.conn = '≡'
         self.lang = 'ABΓΔ'
+        self.sideFlag = None
+        self.inv_dict = {ch: '' for ch in self.lang}
+        self.tree = nx.DiGraph()
+        self.tree.add_node(self.sequent)
+        self.longest_objects = []
 
-    def pipeline(self):
-        # TODO: find connective + on which side?
+    def pipeline(self, cut=True, actual_parent=None):
         print(self.sequent)
-        longest_object = self.find_longest_object()
-        print(longest_object)
-        print(split_by_connective(longest_object, self.conn))
 
-    def find_longest_object(self):
-        sequent = re.split(self.ss, self.sequent)
-        elts = [elt for side in sequent for elt in side.split(',')]
-        return str(max(elts, key=len))
+        # find longest object
+        seq_spl = re.split(self.ss, self.sequent)
+        single_elts = [side.split(',') for side in seq_spl]
+        self.longest_objects.append(self.find_longest_object(single_elts))
+        print(self.longest_objects[-1])
 
+        # update dict A, B
+        self.inv_dict['A'], self.inv_dict['B'] = split_by_connective(self.longest_objects[-1], self.conn)
+        print(self.inv_dict)
 
-# TODO: assign objects to A, B and noise
+        # update dict G, D
+        self.inv_dict['Γ'] = list(filter(lambda x: x != self.longest_objects[-1], single_elts[0]))
+        self.inv_dict['Δ'] = list(filter(lambda x: x != self.longest_objects[-1], single_elts[1]))
+        print(self.inv_dict)
+
+        # perform cut twice (and check if axiom after each cut)
+        actual_parent = self.sequent
+        solutions = [self.sequent + ',' + self.inv_dict['A'],
+                     self.inv_dict['A'] + ',' + self.sequent]
+        print(solutions)
+        # parentheses...
+        # recurrently call pipeline() for each solution
+        solutions = []
+        for solution in solutions:
+            if self.conn in solution:
+                self.pipeline()
+
+    def find_longest_object(self, elts):
+        elts_flatten = [elt for side in elts for elt in side]
+        longest = str(max(elts_flatten, key=len))
+        if longest in elts[0]:
+            self.sideFlag = 0
+        else:
+            self.sideFlag = 1
+        return longest
+
 # TODO: perform cut twice (and check if axiom after each cut - fast base2seq?)
 
 
@@ -70,6 +101,6 @@ testSeqs = ['->p=p',
             'p=q->~(p=r),(q=r)=(p=r)',
             'p=q,~(p=r)->(q=r)=(p=r)']
 for testseq in testSeqs:
-    prvr = aaProver(testseq)
+    prvr = Prover(testseq)
     prvr.pipeline()
     print()
