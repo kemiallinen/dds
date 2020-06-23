@@ -36,7 +36,7 @@ class Proofer:
             self.negation_remover()
             self.G.add_node(self.sequent)
             self.G.add_edge(actual_parent, self.sequent)
-            level += 1
+            # level += 1
             print('\n*************')
             print('[negation removed]')
             print('level = {}'.format(level))
@@ -53,19 +53,30 @@ class Proofer:
 
         else:
             self.nodes_checked.append('{}'.format(self.sequent))
-            self.seq2base()
 
-            print('\n*************')
-            print('sequent fitted = {}'.format(self.sequent))
-            print('fitting dict = {}'.format(self.inv_dict))
+            # if equiv is on the right (cut -> rule 05)
+            # else (cut -> rule 08)
+            if level % 2:
+                self.seq2base()
+                print('\n*************')
+                print('sequent fitted = {}'.format(self.sequent))
+                print('fitting dict = {}'.format(self.inv_dict))
 
-            if self.sequent in self.rules:
-                print('[solutions from rules]')
-                solutions = self.rules[self.sequent]
-            else:
-                print('[no rules found]')
                 print('[cut]')
                 solutions = self.cut()
+            else:
+                split = self.sequent.split(self.ss)
+                if self.op in split[0]:
+
+
+
+            # if self.sequent in self.rules:
+            #     print('[solutions from rules]')
+            #     solutions = self.rules[self.sequent]
+            # else:
+            #     print('[no rules found]')
+            #     print('[cut]')
+            #     solutions = self.cut()
 
             if type(solutions) == str:
                 # solutions = list(solutions)
