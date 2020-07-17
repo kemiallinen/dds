@@ -1,10 +1,6 @@
 import re
 import networkx as nx
 import pandas as pd
-# import igraph
-# import plotly.graph_objects as go
-# import plotly.express as px
-# from igraph import Graph, EdgeSeq
 import matplotlib.pyplot as plt
 import random
 
@@ -299,11 +295,13 @@ testSeqs = ['->p=p',
             '->p=p,p',
             '~p->p=p',
             '->p=p,~p',
-            # '->(p=q)=(q=p)',
+            '->(p=q)=(q=p)',
             'p=q->p=r,(q=r)=(p=r)',
             'p=q,p=r->(q=r)=(p=r)',
             'p=q->~(p=r),(q=r)=(p=r)',
-            'p=q,~(p=r)->(q=r)=(p=r)']
+            'p=q,~(p=r)->(q=r)=(p=r)',
+            '(p=r)=(q=s)->(p=q)=(r=s)',
+            '(p=r)->(p=q)=(r=q)']
 for testseq in testSeqs:
     prvr = Prover()
     seq_init = Sequent(testseq)
@@ -311,16 +309,20 @@ for testseq in testSeqs:
     print()
     print(prvr.tree[['parent', 'value']])
     ts = [tuple(x) for x in prvr.tree[['parent', 'value']].values]
-    print(ts)
+    # print(ts)
     # Gm = Graph.TupleList(ts, directed=True)
     # igraph.plot(Gm)
     G = nx.DiGraph()
     G.add_edges_from(ts)
-    print(G)
+    # print(G)
     # pos = hierarchy_pos(G, 'ROOT')
     nx.draw(G, with_labels=True)
     plt.savefig('out_graphs\\' + seq_init.sequent + '.png')
-
+    plt.close()
+    print()
+    print('*'*30)
+    print()
+    # break
     # https://stackoverflow.com/questions/57512155/how-to-draw-a-tree-more-beautifully-in-networkx
 
     # g = igraph.gra
@@ -328,7 +330,7 @@ for testseq in testSeqs:
     # fig = go.Figure()
     # fig.add_trace(go.Treemap(parents=prvr.tree['parent'], values=prvr.tree['value']))
     # fig.show()
-    break
+    # break
     # print('*'*30)
     # input()
     # print()
