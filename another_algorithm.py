@@ -15,6 +15,8 @@ def multi_replace(dictionary, text):
 
 
 def seq_format(sequent):
+    if '->' not in sequent:
+        sequent = '->' + sequent
     dictionary = {'->': '⇒',
                   '=': '≡'}
     return multi_replace(dictionary, sequent)
@@ -151,9 +153,6 @@ class Prover:
 
         if self.conn in seq.longest_object:
 
-            # print(f'depth = {depth}')
-            # print(seq.banned)
-
             # update dict A, B
             seq.inv_dict['A'], seq.inv_dict['B'] = split_by_connective(seq.longest_object, self.conn)
 
@@ -202,8 +201,6 @@ class Prover:
                 sol = Sequent(sol, banned=parent_sequent.banned)
                 sol.base = base
                 sol.inv_dict = parent_sequent.inv_dict
-                # self.tree.add_node(sol.sequent)
-                # self.tree.add_edge(parent_sequent.sequent, sol.sequent)
                 self.tree = self.tree.append({'depth': depth,
                                               'parent': parent_sequent.sequent,
                                               'value': sol.sequent,
@@ -233,8 +230,6 @@ class Prover:
                               banned=parent_sequent.banned)
             out_seq.base = out_base
 
-            # self.tree.add_node(out_seq.sequent)
-            # self.tree.add_edge(parent_sequent.sequent, out_seq.sequent)
             self.tree = self.tree.append({'depth': depth,
                                           'parent': parent_sequent.sequent,
                                           'value': out_seq.sequent,
@@ -275,49 +270,18 @@ print(data.head())
 for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
     data['formula'] = data['formula'].str.replace(old, new)
 data['formula'] = data['formula'].str.replace(' ', '')
-print(data.head())
 
-for testseq in testSeqs[:]:
+for testseq in data['formula'][:1]:
     prvr = Prover()
     seq_init = Sequent(testseq)
     prvr.pipeline(seq_init)
     print()
     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
-    # prvr.tree.to_excel('out_debug.xlsx')
 
     # check if a sequent is a tautology
     print()
     print(check_if_tautology(prvr))
 
-    # ts = [tuple(x) for x in prvr.tree[['parent', 'value']].values]
-    # # print(ts)
-    # # Gm = Graph.TupleList(ts, directed=True)
-    # # igraph.plot(Gm)
-    # G = nx.DiGraph()
-    # G.add_edges_from(ts)
-    # # print(G)
-    # # pos = hierarchy_pos(G, 'ROOT')
-    # nx.draw(G, with_labels=True)
-    # plt.savefig('out_graphs\\' + seq_init.sequent + '.png')
-    # plt.close()
     print()
     print('*'*30)
     print()
-#     # break
-#     # https://stackoverflow.com/questions/57512155/how-to-draw-a-tree-more-beautifully-in-networkx
-#
-#     # g = igraph.gra
-#     # fig = px.treemap(1/prvr.tree['depth'], parents=prvr.tree['parent'], values=prvr.tree['value'])
-#     # fig = go.Figure()
-#     # fig.add_trace(go.Treemap(parents=prvr.tree['parent'], values=prvr.tree['value']))
-#     # fig.show()
-#     # break
-#     # print('*'*30)
-#     # input()
-#     # print()
-
-
-# prvr = Prover()
-# seq_init = Sequent(testSeqs[6])
-# prvr.pipeline(seq_init)
-# print()
