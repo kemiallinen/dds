@@ -1,8 +1,6 @@
 import re
-import networkx as nx
 import pandas as pd
-import matplotlib.pyplot as plt
-import random
+from copy import deepcopy
 
 
 def multi_replace(dictionary, text):
@@ -74,70 +72,16 @@ def check_if_axiom(sequent):
         return False
 
 
-def hierarchy_pos(G, root=None, width=1., vert_gap = 0.2, vert_loc = 0, xcenter = 0.5):
-
-    '''
-    From Joel's answer at https://stackoverflow.com/a/29597209/2966723.
-    Licensed under Creative Commons Attribution-Share Alike
-
-    If the graph is a tree this will return the positions to plot this in a
-    hierarchical layout.
-
-    G: the graph (must be a tree)
-
-    root: the root node of current branch
-    - if the tree is directed and this is not given,
-      the root will be found and used
-    - if the tree is directed and this is given, then
-      the positions will be just for the descendants of this node.
-    - if the tree is undirected and not given,
-      then a random choice will be used.
-
-    width: horizontal space allocated for this branch - avoids overlap with other branches
-
-    vert_gap: gap between levels of hierarchy
-
-    vert_loc: vertical location of root
-
-    xcenter: horizontal location of root
-    '''
-    if not nx.is_tree(G):
-        raise TypeError('cannot use hierarchy_pos on a graph that is not a tree')
-
-    if root is None:
-        if isinstance(G, nx.DiGraph):
-            root = next(iter(nx.topological_sort(G)))  #allows back compatibility with nx version 1.11
-        else:
-            root = random.choice(list(G.nodes))
-
-    def _hierarchy_pos(G, root, width=1., vert_gap = 0.2, vert_loc = 0, xcenter = 0.5, pos = None, parent = None):
-        '''
-        see hierarchy_pos docstring for most arguments
-
-        pos: a dict saying where all nodes go if they have been assigned
-        parent: parent of this branch. - only affects it if non-directed
-
-        '''
-
-        if pos is None:
-            pos = {root:(xcenter,vert_loc)}
-        else:
-            pos[root] = (xcenter, vert_loc)
-        children = list(G.neighbors(root))
-        if not isinstance(G, nx.DiGraph) and parent is not None:
-            children.remove(parent)
-        if len(children)!=0:
-            dx = width/len(children)
-            nextx = xcenter - width/2 - dx/2
-            for child in children:
-                nextx += dx
-                pos = _hierarchy_pos(G,child, width = dx, vert_gap = vert_gap,
-                                    vert_loc = vert_loc-vert_gap, xcenter=nextx,
-                                    pos=pos, parent = root)
-        return pos
-
-
-    return _hierarchy_pos(G, root, width, vert_gap, vert_loc, xcenter)
+def check_if_tautology(prover, verbose=True):
+    parents = prover.tree['parent'].to_numpy()[1:]
+    values = prover.tree['value'].to_numpy()[1:]
+    val_par_diff = set(values).difference(set(parents))
+    if_leaves_are_axioms = [check_if_axiom(x) for x in val_par_diff]
+    if verbose:
+        for seq, state in zip(val_par_diff, if_leaves_are_axioms):
+            print(f'{state}\t\t{seq}')
+        print()
+    return all(if_leaves_are_axioms)
 
 
 class Sequent:
@@ -163,32 +107,38 @@ class Sequent:
         self.single = [set(re.split(',', obj)) for obj in self.split]
 
     def unnegate(self):
-        self.update(negation_remover(self.sequent))
+        unn_seq = negation_remover(self.sequent)
+        self.update(unn_seq)
 
     def find_longest_object(self):
-        longest = str(max({elt for side in self.single for elt in side}.difference(self.banned), key=len))
+        try:
+            longest = str(max({elt for side in self.single for elt in side}.difference(self.banned), key=len))
+            self.sideFlag = int(longest in self.single[1])
+        except ValueError:
+            longest = ''
+            self.sideFlag = -1
         self.longest_object = longest
-        self.sideFlag = int(longest in self.single[1])
+        self.banned.add(longest)
 
 
 class Prover:
     def __init__(self):
         self.ss = '⇒'
         self.conn = '≡'
-        self.tree = pd.DataFrame(columns=['depth', 'parent', 'value'])
-        self.longest_objects = []
-        self.rules = {'Γ⇒Δ,A≡B,A,B': 'B,Γ⇒Δ,A≡B,B', # (05) ↑
-                      'B,A,Γ⇒Δ,A≡B': 'A,Γ⇒Δ,A,A≡B', # (05) ↓
-                      'B,A≡B,Γ⇒Δ,A': 'B,A≡B,Γ⇒Δ,B', # (08) ↑
-                      'A,A≡B,Γ⇒Δ,B': 'A,A≡B,Γ⇒Δ,A'} # (08) ↓
+        self.tree = pd.DataFrame(columns=['depth', 'parent', 'value', 'operation'])
+        self.rules = {'Γ⇒Δ,A≡B,A,B': ['B,Γ⇒Δ,A≡B,B', '(05) ↑'],
+                      'B,A,Γ⇒Δ,A≡B': ['A,Γ⇒Δ,A,A≡B', '(05) ↓'],
+                      'B,A≡B,Γ⇒Δ,A': ['B,A≡B,Γ⇒Δ,B', '(08) ↑'],
+                      'A,A≡B,Γ⇒Δ,B': ['A,A≡B,Γ⇒Δ,A', '(08) ↓']}
 
     def pipeline(self, seq, depth=0):
-        print(f'current sequent = {seq.sequent}')
+        # print(f'depth = {depth} // current sequent = {seq.sequent}')
         # self.tree.add_node(seq.sequent)
         if self.tree.empty:
             self.tree = self.tree.append({'depth': depth,
                                           'parent': 'ROOT',
-                                          'value': seq.sequent},
+                                          'value': seq.sequent,
+                                          'operation': 'START'},
                                          ignore_index=True)
 
         # remove negations
@@ -198,18 +148,19 @@ class Prover:
 
         # find longest object
         seq.find_longest_object()
-        self.longest_objects.append(seq.longest_object)
-        print(self.longest_objects)
 
-        if self.conn in self.longest_objects[-1]:
+        if self.conn in seq.longest_object:
+
+            # print(f'depth = {depth}')
+            # print(seq.banned)
 
             # update dict A, B
-            seq.inv_dict['A'], seq.inv_dict['B'] = split_by_connective(self.longest_objects[-1], self.conn)
+            seq.inv_dict['A'], seq.inv_dict['B'] = split_by_connective(seq.longest_object, self.conn)
 
             # update dict G, D
             for ch, n in zip('ΓΔ', [0, 1]):
-                seq.inv_dict[ch] = ','.join(set(filter(lambda x: x != self.longest_objects[-1], seq.single[n])))
-            print(seq.inv_dict)
+                seq.inv_dict[ch] = ','.join(set(filter(lambda x: x != seq.longest_object, seq.single[n])))
+            # print(seq.inv_dict)
 
             # update base form
             if seq.sideFlag:
@@ -221,7 +172,8 @@ class Prover:
             self.recursive_cut(seq, depth=depth)
 
         else:
-            print('******** NA ********')
+            pass
+            # print('******** NA ********')
 
     def cut_by(self, sequent, to_cut):
         se = sequent.single
@@ -233,63 +185,77 @@ class Prover:
 
     def recursive_cut(self, parent_sequent, possible_cuts='AB', depth=0):
         if possible_cuts:
-            print('\t' * depth, end='')
-            print(f'Cut (by {possible_cuts[0]} which is {parent_sequent.inv_dict[possible_cuts[0]]})')
+            # print('*'*30)
+            # print('\t' * depth, end='')
+            # print(f'parent_seq = {parent_sequent.sequent}, id = {id(parent_sequent)}')
+            # print('\t' * depth, end='')
+            # print(f'banned = {parent_sequent.banned}')
+            # print('\t' * depth, end='')
+            # print(f'inv_dict = {parent_sequent.inv_dict}')
+            # print('*'*30)
+            #
+            # print('\t' * depth, end='')
+            # print(f'Cut (by {possible_cuts[0]} which is {parent_sequent.inv_dict[possible_cuts[0]]})')
             solutions, solutions_base = self.cut_by(parent_sequent, possible_cuts[0])
             depth += 1
             for sol, base in zip(solutions, solutions_base):
-                sol = Sequent(sol, banned=set(self.longest_objects))
+                sol = Sequent(sol, banned=parent_sequent.banned)
                 sol.base = base
                 sol.inv_dict = parent_sequent.inv_dict
                 # self.tree.add_node(sol.sequent)
                 # self.tree.add_edge(parent_sequent.sequent, sol.sequent)
                 self.tree = self.tree.append({'depth': depth,
                                               'parent': parent_sequent.sequent,
-                                              'value': sol.sequent},
+                                              'value': sol.sequent,
+                                              'operation': f'CUT by {possible_cuts[0]} / {parent_sequent.inv_dict[possible_cuts[0]]}'},
                                              ignore_index=True)
                 if check_if_axiom(sol.sequent):
-                    print('\t' * depth, end='')
-                    print(f'Solution: {sol.sequent} is an axiom.')
+                    pass
+                    # print('\t' * depth, end='')
+                    # print(f'Solution: {sol.sequent} is an axiom.')
                 else:
-                    print('\t' * depth, end='')
-                    print(f'Solution: {sol.sequent} is NOT an axiom.')
+                    # print('\t' * depth, end='')
+                    # print(f'Solution: {sol.sequent} is NOT an axiom.')
                     self.recursive_cut(sol, possible_cuts[1:], depth=depth)
         else:
             self.from_rules(parent_sequent, depth=depth)
 
     def from_rules(self, parent_sequent, depth=0):
-        depth += 1
         if parent_sequent.base in self.rules.keys():
-            print('\t' * depth, end='')
-            print(f'Solution for {parent_sequent.sequent} found in rules.')
-            print('\t' * depth, end='')
-            print(parent_sequent.base + ' → ' + self.rules[parent_sequent.base])
+            depth += 1
+            # print('\t' * depth, end='')
+            # print(f'Solution for {parent_sequent.sequent} found in rules.')
+            # print('\t' * depth, end='')
+            # print(parent_sequent.base + ' → ' + self.rules[parent_sequent.base][0])
 
-            out_base = self.rules[parent_sequent.base]
-            out_seq = Sequent(multi_replace({**{'A≡B': self.longest_objects[-1]}, **parent_sequent.inv_dict}, out_base),
-                              banned=set(self.longest_objects))
+            out_base = self.rules[parent_sequent.base][0]
+            out_seq = Sequent(multi_replace({**{'A≡B': parent_sequent.longest_object}, **parent_sequent.inv_dict}, out_base),
+                              banned=parent_sequent.banned)
             out_seq.base = out_base
 
             # self.tree.add_node(out_seq.sequent)
             # self.tree.add_edge(parent_sequent.sequent, out_seq.sequent)
             self.tree = self.tree.append({'depth': depth,
                                           'parent': parent_sequent.sequent,
-                                          'value': out_seq.sequent},
+                                          'value': out_seq.sequent,
+                                          'operation': self.rules[parent_sequent.base][1]},
                                          ignore_index=True)
 
-            if check_if_axiom(out_seq.sequent):
-                print('\t' * depth, end='')
-                print(f'Solution: {out_seq.sequent} is an axiom.')
-            else:
-                print('\t' * depth, end='')
-                print('NO JAK TO KURNA NIE.')
+            # if check_if_axiom(out_seq.sequent):
+                # print('\t' * depth, end='')
+                # print(f'Solution: {out_seq.sequent} is an axiom.')
+            # else:
+                # print('\t' * depth, end='')
+                # print('NO JAK TO KURNA NIE.')
         else:
-            print('\t' * depth, end='')
-            print(f'No solution found for {parent_sequent.sequent}')
-            print('*'*20)
-            self.pipeline(parent_sequent, depth=depth)
+            # print('\t' * depth, end='')
+            # print(f'No solution found for {parent_sequent.sequent}')
+            # print('*'*20)
+            self.pipeline(deepcopy(parent_sequent), depth=depth)
 
 
+pd.set_option('display.max_columns', None)
+pd.set_option("max_rows", None)
 testSeqs = ['->p=p',
             'p->p=p',
             '->p=p,p',
@@ -301,39 +267,54 @@ testSeqs = ['->p=p',
             'p=q->~(p=r),(q=r)=(p=r)',
             'p=q,~(p=r)->(q=r)=(p=r)',
             '(p=r)=(q=s)->(p=q)=(r=s)',
-            '(p=r)->(p=q)=(r=q)']
-for testseq in testSeqs:
+            'p=r->(p=q)=(r=q)']
+
+# FORMUŁY OD SZYMONA
+data = pd.read_csv('dawid=.txt')
+print(data.head())
+for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
+    data['formula'] = data['formula'].str.replace(old, new)
+data['formula'] = data['formula'].str.replace(' ', '')
+print(data.head())
+
+for testseq in testSeqs[:]:
     prvr = Prover()
     seq_init = Sequent(testseq)
     prvr.pipeline(seq_init)
     print()
-    print(prvr.tree[['parent', 'value']])
-    ts = [tuple(x) for x in prvr.tree[['parent', 'value']].values]
-    # print(ts)
-    # Gm = Graph.TupleList(ts, directed=True)
-    # igraph.plot(Gm)
-    G = nx.DiGraph()
-    G.add_edges_from(ts)
-    # print(G)
-    # pos = hierarchy_pos(G, 'ROOT')
-    nx.draw(G, with_labels=True)
-    plt.savefig('out_graphs\\' + seq_init.sequent + '.png')
-    plt.close()
+    print(prvr.tree[['depth', 'parent', 'value', 'operation']])
+    # prvr.tree.to_excel('out_debug.xlsx')
+
+    # check if a sequent is a tautology
+    print()
+    print(check_if_tautology(prvr))
+
+    # ts = [tuple(x) for x in prvr.tree[['parent', 'value']].values]
+    # # print(ts)
+    # # Gm = Graph.TupleList(ts, directed=True)
+    # # igraph.plot(Gm)
+    # G = nx.DiGraph()
+    # G.add_edges_from(ts)
+    # # print(G)
+    # # pos = hierarchy_pos(G, 'ROOT')
+    # nx.draw(G, with_labels=True)
+    # plt.savefig('out_graphs\\' + seq_init.sequent + '.png')
+    # plt.close()
     print()
     print('*'*30)
     print()
-    # break
-    # https://stackoverflow.com/questions/57512155/how-to-draw-a-tree-more-beautifully-in-networkx
-
-    # g = igraph.gra
-    # fig = px.treemap(1/prvr.tree['depth'], parents=prvr.tree['parent'], values=prvr.tree['value'])
-    # fig = go.Figure()
-    # fig.add_trace(go.Treemap(parents=prvr.tree['parent'], values=prvr.tree['value']))
-    # fig.show()
-    # break
-    # print('*'*30)
-    # input()
-    # print()
+#     # break
+#     # https://stackoverflow.com/questions/57512155/how-to-draw-a-tree-more-beautifully-in-networkx
+#
+#     # g = igraph.gra
+#     # fig = px.treemap(1/prvr.tree['depth'], parents=prvr.tree['parent'], values=prvr.tree['value'])
+#     # fig = go.Figure()
+#     # fig.add_trace(go.Treemap(parents=prvr.tree['parent'], values=prvr.tree['value']))
+#     # fig.show()
+#     # break
+#     # print('*'*30)
+#     # input()
+#     # print()
 
 
 # prvr = Prover()
