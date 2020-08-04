@@ -44,25 +44,37 @@ def split_by_connective(s, conn):
 
 
 def negation_remover(sequent):
+    print(f'nr // seq before split = {sequent}')
     sequent = re.split('⇒', sequent)
+    print(f'nr // seq after split = {sequent}')
     for rd in ['~[A-Za-z]', '~\((\(.*?\))\)', '~\((.*?)\)']:
         for n, side in enumerate(sequent):
+            print(f'n = {n}, side = {side}')
             negs = re.findall(rd, side)
+            print(f'negs = {negs}')
             for neg in negs:
+                print(f'neg = {neg}')
+                print('inner list =', [item for side in sequent for item in side.split(',')])
+                print('set of the above =', set([item for side in sequent for item in side.split(',')]))
+                print('intersection = ', {neg, '~(' + neg + ')'}.intersection(set([item for side in sequent for item in side.split(',')])))
                 if {neg, '~(' + neg + ')'}.intersection(set([item for side in sequent for item in side.split(',')])):
                     if len(neg) == 2:
+                        print('len == 2')
                         to_replace = neg
                         neg = neg[1]
                     else:
                         to_replace = '~(' + neg + ')'
+                    print('to replace: ', to_replace)
                     if sequent[int(not n)]:
                         if neg not in sequent[int(not n)].split(','):
                             sequent[int(not n)] += ',' + neg
                     else:
                         sequent[int(not n)] += neg
-
+                    print('sequent before replace and join = ', sequent)
                     sequent[n] = sequent[n].replace(to_replace, '')
+                    print('sequent after replace and before join = ', sequent)
                     sequent[n] = ','.join(filter(None, re.split(',', sequent[n])))
+                    print('sequent after replace and join = ', sequent)
     return '⇒'.join(sequent)
 
 
@@ -266,7 +278,6 @@ testSeqs = ['->p=p',
 
 # FORMUŁY OD SZYMONA
 data = pd.read_csv('dawid=.txt')
-print(data.head())
 for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
     data['formula'] = data['formula'].str.replace(old, new)
 data['formula'] = data['formula'].str.replace(' ', '')
