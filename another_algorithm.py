@@ -1,6 +1,7 @@
 import re
 import pandas as pd
 from copy import deepcopy
+from itertools import accumulate
 
 
 def multi_replace(dictionary, text):
@@ -15,11 +16,16 @@ def multi_replace(dictionary, text):
 
 
 def seq_format(sequent):
-    if '->' not in sequent:
-        sequent = '->' + sequent
-    dictionary = {'->': '⇒',
-                  '=': '≡'}
-    return multi_replace(dictionary, sequent)
+    if '⇒' not in sequent:
+        if '->' not in sequent:
+            sequent = '->' + sequent
+        dictionary = {'->': '⇒',
+                      '=': '≡'}
+        sequent = multi_replace(dictionary, sequent)
+    sequent = sequent.split(',')
+    if '' in sequent:
+        sequent.remove('')
+    return ','.join(sequent)
 
 
 def split_by_connective(s, conn):
@@ -30,7 +36,6 @@ def split_by_connective(s, conn):
     :param conn: connective (str)
     :return: object split by the main connective (list of strings)
     """
-    from itertools import accumulate
     # create a list representing "parentheses depth"
     # e.g.: s = '(poq)o(qor)', par_nest=[1,1,1,1,0,0,1,1,1,1,0]
     par_nest = list(accumulate((ch == "(") - (ch == ")") for ch in s))
@@ -44,26 +49,36 @@ def split_by_connective(s, conn):
 
 
 def negation_remover(sequent):
-    sequent = re.split('⇒', sequent)
-    for rd in ['~[A-Za-z]', '~\((\(.*?\))\)', '~\((.*?)\)']:
-        for n, side in enumerate(sequent):
-            negs = re.findall(rd, side)
-            for neg in negs:
-                if {neg, '~(' + neg + ')'}.intersection(set([item for side in sequent for item in side.split(',')])):
-                    if len(neg) == 2:
-                        to_replace = neg
-                        neg = neg[1]
-                    else:
-                        to_replace = '~(' + neg + ')'
-                    if sequent[int(not n)]:
-                        if neg not in sequent[int(not n)].split(','):
-                            sequent[int(not n)] += ',' + neg
-                    else:
-                        sequent[int(not n)] += neg
-
-                    sequent[n] = sequent[n].replace(to_replace, '')
-                    sequent[n] = ','.join(filter(None, re.split(',', sequent[n])))
-    return '⇒'.join(sequent)
+    # print(sequent)
+    sequent = sequent.split('⇒')
+    for n, side in enumerate(sequent):
+        if side:
+            par_nest = list(accumulate((ch == "(") - (ch == ")") for ch in side))
+            collect = False
+            negation = ''
+            for numch, ch in enumerate(side):
+                if collect:
+                    negation += ch
+                if ch == '~' and par_nest[numch] == 0:
+                    collect = True
+                elif par_nest[numch] == 0:
+                    collect = False
+            if negation:
+                new_side = side.split(',')
+                new_side.remove('~' + negation)
+                sequent[n] = ','.join(new_side)
+                if len(negation) > 1:
+                    negation = negation[1:-1]
+                new_opposite_side = sequent[int(not n)].split(',') + [negation]
+                if '' in new_opposite_side:
+                    new_opposite_side.remove('')
+                sequent[int(not n)] = ','.join(new_opposite_side)
+    out = '⇒'.join(sequent)
+    par_nest = list(accumulate((ch == "(") - (ch == ")") for ch in out))
+    if any([ch == '~' and par_nest[n] == 0 for n, ch in enumerate(out)]):
+        return negation_remover(out)
+    else:
+        return out
 
 
 def check_if_axiom(sequent):
@@ -88,10 +103,7 @@ def check_if_tautology(prover, verbose=True):
 
 class Sequent:
     def __init__(self, sequent, banned=None):
-        if '⇒' in sequent:
-            self.sequent = sequent
-        else:
-            self.sequent = seq_format(sequent)
+        self.sequent = negation_remover(seq_format(sequent))
         if banned is None:
             self.banned = set()
         else:
@@ -132,10 +144,10 @@ class Prover:
                       'B,A,Γ⇒Δ,A≡B': ['A,Γ⇒Δ,A,A≡B', '(05) ↓'],
                       'B,A≡B,Γ⇒Δ,A': ['B,A≡B,Γ⇒Δ,B', '(08) ↑'],
                       'A,A≡B,Γ⇒Δ,B': ['A,A≡B,Γ⇒Δ,A', '(08) ↓']}
+        self.isTautology = True
 
     def pipeline(self, seq, depth=0):
-        # print(f'depth = {depth} // current sequent = {seq.sequent}')
-        # self.tree.add_node(seq.sequent)
+        print(f'depth = {depth} // current sequent = {seq.sequent}')
         if self.tree.empty:
             self.tree = self.tree.append({'depth': depth,
                                           'parent': 'ROOT',
@@ -159,7 +171,7 @@ class Prover:
             # update dict G, D
             for ch, n in zip('ΓΔ', [0, 1]):
                 seq.inv_dict[ch] = ','.join(set(filter(lambda x: x != seq.longest_object, seq.single[n])))
-            # print(seq.inv_dict)
+            print(seq.inv_dict)
 
             # update base form
             if seq.sideFlag:
@@ -171,8 +183,8 @@ class Prover:
             self.recursive_cut(seq, depth=depth)
 
         else:
-            pass
-            # print('******** NA ********')
+            print('******** NA ********')
+            self.isTautology = False
 
     def cut_by(self, sequent, to_cut):
         se = sequent.single
@@ -184,17 +196,17 @@ class Prover:
 
     def recursive_cut(self, parent_sequent, possible_cuts='AB', depth=0):
         if possible_cuts:
-            # print('*'*30)
-            # print('\t' * depth, end='')
-            # print(f'parent_seq = {parent_sequent.sequent}, id = {id(parent_sequent)}')
-            # print('\t' * depth, end='')
-            # print(f'banned = {parent_sequent.banned}')
-            # print('\t' * depth, end='')
-            # print(f'inv_dict = {parent_sequent.inv_dict}')
-            # print('*'*30)
-            #
-            # print('\t' * depth, end='')
-            # print(f'Cut (by {possible_cuts[0]} which is {parent_sequent.inv_dict[possible_cuts[0]]})')
+            print('*'*30)
+            print('\t' * depth, end='')
+            print(f'parent_seq = {parent_sequent.sequent}')
+            print('\t' * depth, end='')
+            print(f'banned = {parent_sequent.banned}')
+            print('\t' * depth, end='')
+            print(f'inv_dict = {parent_sequent.inv_dict}')
+            print('*'*30)
+
+            print('\t' * depth, end='')
+            print(f'Cut (by {possible_cuts[0]} which is {parent_sequent.inv_dict[possible_cuts[0]]})')
             solutions, solutions_base = self.cut_by(parent_sequent, possible_cuts[0])
             depth += 1
             for sol, base in zip(solutions, solutions_base):
@@ -207,12 +219,12 @@ class Prover:
                                               'operation': f'CUT by {possible_cuts[0]} / {parent_sequent.inv_dict[possible_cuts[0]]}'},
                                              ignore_index=True)
                 if check_if_axiom(sol.sequent):
+                    print('\t' * depth, end='')
+                    print(f'Solution: {sol.sequent} is an axiom.')
                     pass
-                    # print('\t' * depth, end='')
-                    # print(f'Solution: {sol.sequent} is an axiom.')
                 else:
-                    # print('\t' * depth, end='')
-                    # print(f'Solution: {sol.sequent} is NOT an axiom.')
+                    print('\t' * depth, end='')
+                    print(f'Solution: {sol.sequent} is NOT an axiom.')
                     self.recursive_cut(sol, possible_cuts[1:], depth=depth)
         else:
             self.from_rules(parent_sequent, depth=depth)
@@ -220,32 +232,29 @@ class Prover:
     def from_rules(self, parent_sequent, depth=0):
         if parent_sequent.base in self.rules.keys():
             depth += 1
-            # print('\t' * depth, end='')
-            # print(f'Solution for {parent_sequent.sequent} found in rules.')
-            # print('\t' * depth, end='')
-            # print(parent_sequent.base + ' → ' + self.rules[parent_sequent.base][0])
-
+            print('\t' * depth, end='')
+            print(f'Solution for {parent_sequent.sequent} found in rules.')
+            print('\t' * depth, end='')
+            print(parent_sequent.base + ' → ' + self.rules[parent_sequent.base][0])
             out_base = self.rules[parent_sequent.base][0]
-            out_seq = Sequent(multi_replace({**{'A≡B': parent_sequent.longest_object}, **parent_sequent.inv_dict}, out_base),
-                              banned=parent_sequent.banned)
-            out_seq.base = out_base
+            out_seq = multi_replace({**{'A≡B': parent_sequent.longest_object}, **parent_sequent.inv_dict}, out_base)
 
             self.tree = self.tree.append({'depth': depth,
                                           'parent': parent_sequent.sequent,
-                                          'value': out_seq.sequent,
+                                          'value': out_seq,
                                           'operation': self.rules[parent_sequent.base][1]},
                                          ignore_index=True)
 
-            # if check_if_axiom(out_seq.sequent):
-                # print('\t' * depth, end='')
-                # print(f'Solution: {out_seq.sequent} is an axiom.')
-            # else:
-                # print('\t' * depth, end='')
-                # print('NO JAK TO KURNA NIE.')
+            if check_if_axiom(out_seq):
+                print('\t' * depth, end='')
+                print(f'Solution: {out_seq} is an axiom.')
+            else:
+                print('\t' * depth, end='')
+                print('NO JAK TO KURNA NIE.')
         else:
-            # print('\t' * depth, end='')
-            # print(f'No solution found for {parent_sequent.sequent}')
-            # print('*'*20)
+            print('\t' * depth, end='')
+            print(f'No solution found for {parent_sequent.sequent}')
+            print('*'*20)
             self.pipeline(deepcopy(parent_sequent), depth=depth)
 
 
@@ -266,12 +275,13 @@ testSeqs = ['->p=p',
 
 # FORMUŁY OD SZYMONA
 data = pd.read_csv('dawid=.txt')
-print(data.head())
 for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
     data['formula'] = data['formula'].str.replace(old, new)
 data['formula'] = data['formula'].str.replace(' ', '')
 
-for testseq in data['formula'][:1]:
+
+for index, trial in data.iterrows():
+    testseq = trial['formula']
     prvr = Prover()
     seq_init = Sequent(testseq)
     prvr.pipeline(seq_init)
@@ -279,8 +289,7 @@ for testseq in data['formula'][:1]:
     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
 
     # check if a sequent is a tautology
-    print()
-    print(check_if_tautology(prvr))
+    assert prvr.isTautology == trial['is tautology Syn']
 
     print()
     print('*'*30)
