@@ -20,7 +20,8 @@ def seq_format(sequent):
         if '->' not in sequent:
             sequent = '->' + sequent
         dictionary = {'->': '⇒',
-                      '=': '≡'}
+                      '=': '≡',
+                      'x': '⊻'}
         sequent = multi_replace(dictionary, sequent)
     sequent = sequent.split(',')
     if '' in sequent:
@@ -28,28 +29,27 @@ def seq_format(sequent):
     return ','.join(sequent)
 
 
-def split_by_connective(s, conn):
+def split_by_connective(s, conns):
     """
     Well, that's obviously an overkill function, BUT - it's ready for non-trivial cases like "p o (p o q)", where one
     can't simply split string in half. Maybe someday I'll thank myself for this one.
     :param s: logical object to be split (str)
-    :param conn: connective (str)
+    :param conns: possible connectives (str)
     :return: object split by the main connective (list of strings)
     """
     # create a list representing "parentheses depth"
     # e.g.: s = '(poq)o(qor)', par_nest=[1,1,1,1,0,0,1,1,1,1,0]
     par_nest = list(accumulate((ch == "(") - (ch == ")") for ch in s))
     # look for indices under which we can find connective at the minimum value of parentheses depth
-    slice_at = [i for i, ch in enumerate(s) if (ch == conn) and (par_nest[i] == min(par_nest))][0]
+    slice_at = [i for i, ch in enumerate(s) if (ch in conns) and (par_nest[i] == min(par_nest))][0]
     out = [s[:slice_at], s[slice_at+1:]]
     for n, obj in enumerate(out):
         if '(' in obj:
             out[n] = out[n][1:-1]
-    return out
+    return out[0], out[1], s[slice_at]
 
 
 def negation_remover(sequent):
-    # print(sequent)
     sequent = sequent.split('⇒')
     for n, side in enumerate(sequent):
         if side:
@@ -61,8 +61,8 @@ def negation_remover(sequent):
                     negation += ch
                 if ch == '~' and par_nest[numch] == 0:
                     collect = True
-                elif par_nest[numch] == 0:
-                    collect = False
+                elif par_nest[numch] == 0 and collect:
+                    break
             if negation:
                 new_side = side.split(',')
                 new_side.remove('~' + negation)
@@ -138,12 +138,17 @@ class Sequent:
 class Prover:
     def __init__(self):
         self.ss = '⇒'
-        self.conn = '≡'
+        self.conn = ''
+        self.connectives = '≡⊻∨→'
         self.tree = pd.DataFrame(columns=['depth', 'parent', 'value', 'operation'])
         self.rules = {'Γ⇒Δ,A≡B,A,B': ['B,Γ⇒Δ,A≡B,B', '(05) ↑'],
                       'B,A,Γ⇒Δ,A≡B': ['A,Γ⇒Δ,A,A≡B', '(05) ↓'],
                       'B,A≡B,Γ⇒Δ,A': ['B,A≡B,Γ⇒Δ,B', '(08) ↑'],
-                      'A,A≡B,Γ⇒Δ,B': ['A,A≡B,Γ⇒Δ,A', '(08) ↓']}
+                      'A,A≡B,Γ⇒Δ,B': ['A,A≡B,Γ⇒Δ,A', '(08) ↓'],
+                      'B,Γ⇒Δ,A⊻B,A': ['B,Γ⇒Δ,A⊻B,B', '(10) ↑'],
+                      'A,Γ⇒Δ,A⊻B,B': ['A,Γ⇒Δ,A⊻B,A', '(10) ↓'],
+                      'B,A,A⊻B,Γ⇒Δ': ['A,A⊻B,Γ⇒Δ,A', '(02) ↑'],
+                      'A⊻B,Γ⇒Δ,A,B': ['A⊻B,B,Γ⇒Δ,B', '(02) ↓']}
         self.isTautology = True
 
     def pipeline(self, seq, depth=0):
@@ -163,10 +168,10 @@ class Prover:
         # find longest object
         seq.find_longest_object()
 
-        if self.conn in seq.longest_object:
+        if any(el in seq.longest_object for el in self.connectives):
 
             # update dict A, B
-            seq.inv_dict['A'], seq.inv_dict['B'] = split_by_connective(seq.longest_object, self.conn)
+            seq.inv_dict['A'], seq.inv_dict['B'], self.conn = split_by_connective(seq.longest_object, self.connectives)
 
             # update dict G, D
             for ch, n in zip('ΓΔ', [0, 1]):
@@ -175,9 +180,9 @@ class Prover:
 
             # update base form
             if seq.sideFlag:
-                seq.base = 'Γ⇒Δ,A≡B'
+                seq.base = f'Γ⇒Δ,A{self.conn}B'
             else:
-                seq.base = 'A≡B,Γ⇒Δ'
+                seq.base = f'A{self.conn}B,Γ⇒Δ'
 
             # perform cut twice (and check if axiom after each cut)
             self.recursive_cut(seq, depth=depth)
@@ -237,7 +242,8 @@ class Prover:
             print('\t' * depth, end='')
             print(parent_sequent.base + ' → ' + self.rules[parent_sequent.base][0])
             out_base = self.rules[parent_sequent.base][0]
-            out_seq = multi_replace({**{'A≡B': parent_sequent.longest_object}, **parent_sequent.inv_dict}, out_base)
+            out_seq = multi_replace({**{f'A{self.conn}B': parent_sequent.longest_object},
+                                     **parent_sequent.inv_dict}, out_base)
 
             self.tree = self.tree.append({'depth': depth,
                                           'parent': parent_sequent.sequent,
@@ -258,8 +264,32 @@ class Prover:
             self.pipeline(deepcopy(parent_sequent), depth=depth)
 
 
-pd.set_option('display.max_columns', None)
-pd.set_option("max_rows", None)
+# pd.set_option('display.max_columns', None)
+# pd.set_option("max_rows", None)
+#
+# # FORMUŁY OD SZYMONA
+# data = pd.read_csv('dawid=.txt')
+# for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
+#     data['formula'] = data['formula'].str.replace(old, new)
+# data['formula'] = data['formula'].str.replace(' ', '')
+#
+# for index, trial in data.head(5).iterrows():
+#     testseq = trial['formula']
+#     prvr = Prover()
+#     seq_init = Sequent(testseq)
+#     prvr.pipeline(seq_init)
+#     print()
+#     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
+#
+#     # check if a sequent is a tautology
+#     assert prvr.isTautology == trial['is tautology Syn']
+#
+#     print()
+#     print('*'*30)
+#     print()
+
+# mixed:
+# ->(pxq)=(~px~q)
 testSeqs = ['->p=p',
             'p->p=p',
             '->p=p,p',
@@ -271,26 +301,32 @@ testSeqs = ['->p=p',
             'p=q->~(p=r),(q=r)=(p=r)',
             'p=q,~(p=r)->(q=r)=(p=r)',
             '(p=r)=(q=s)->(p=q)=(r=s)',
-            'p=r->(p=q)=(r=q)']
+            'p=r->(p=q)=(r=q)',
+            'p->~(pxp)',
+            '->~(pxp),p',
+            '~p->~(pxp)',
+            '->~(pxp),~p',
+            '~(pxq)->p,~((qxr)x(pxr))',
+            '->(pxq)=((~p)x(~q))']
 
-# FORMUŁY OD SZYMONA
-data = pd.read_csv('dawid=.txt')
-for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
-    data['formula'] = data['formula'].str.replace(old, new)
-data['formula'] = data['formula'].str.replace(' ', '')
-
-
-for index, trial in data.iterrows():
-    testseq = trial['formula']
+for ts in testSeqs[:]:
     prvr = Prover()
-    seq_init = Sequent(testseq)
+    print(ts)
+    seq_init = Sequent(ts)
     prvr.pipeline(seq_init)
     print()
     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
-
-    # check if a sequent is a tautology
-    assert prvr.isTautology == trial['is tautology Syn']
-
     print()
-    print('*'*30)
+    print(prvr.isTautology)
     print()
+    print('*' * 30)
+    print()
+
+# prvr = Prover()
+# print(testSeqs[-1])
+# seq_init = Sequent(testSeqs[-1])
+# prvr.pipeline(seq_init)
+# print()
+# print(prvr.tree[['depth', 'parent', 'value', 'operation']])
+# print()
+# print(prvr.isTautology)
