@@ -2,6 +2,7 @@ import re
 import pandas as pd
 from copy import deepcopy
 from itertools import accumulate
+# TODO: let user decide about an input (file/hardcoded test cases/custom sequent)
 
 
 def multi_replace(dictionary, text):
@@ -17,16 +18,15 @@ def multi_replace(dictionary, text):
 
 def seq_format(sequent):
     if '⇒' not in sequent:
-        if '->' not in sequent:
-            sequent = '->' + sequent
-        dictionary = {'->': '⇒',
+        if '=>' not in sequent:
+            sequent = '=>' + sequent
+        dictionary = {'=>': '⇒',
+                      '->': '→',
                       '=': '≡',
+                      'v': '∨',
                       'x': '⊻'}
         sequent = multi_replace(dictionary, sequent)
-    sequent = sequent.split(',')
-    if '' in sequent:
-        sequent.remove('')
-    return ','.join(sequent)
+    return clear_commas(sequent)
 
 
 def split_by_connective(s, conns):
@@ -42,7 +42,7 @@ def split_by_connective(s, conns):
     par_nest = list(accumulate((ch == "(") - (ch == ")") for ch in s))
     # look for indices under which we can find connective at the minimum value of parentheses depth
     slice_at = [i for i, ch in enumerate(s) if (ch in conns) and (par_nest[i] == min(par_nest))][0]
-    out = [s[:slice_at], s[slice_at+1:]]
+    out = [s[:slice_at], s[slice_at + 1:]]
     for n, obj in enumerate(out):
         if '(' in obj:
             out[n] = out[n][1:-1]
@@ -101,6 +101,10 @@ def check_if_tautology(prover, verbose=True):
     return all(if_leaves_are_axioms)
 
 
+def clear_commas(sequent):
+    return '⇒'.join([','.join(elt for elt in side.split(',') if elt) for side in sequent.split('⇒')])
+
+
 class Sequent:
     def __init__(self, sequent, banned=None):
         self.sequent = negation_remover(seq_format(sequent))
@@ -148,7 +152,15 @@ class Prover:
                       'B,Γ⇒Δ,A⊻B,A': ['B,Γ⇒Δ,A⊻B,B', '(10) ↑'],
                       'A,Γ⇒Δ,A⊻B,B': ['A,Γ⇒Δ,A⊻B,A', '(10) ↓'],
                       'B,A,A⊻B,Γ⇒Δ': ['A,A⊻B,Γ⇒Δ,A', '(02) ↑'],
-                      'A⊻B,Γ⇒Δ,A,B': ['A⊻B,B,Γ⇒Δ,B', '(02) ↓']}
+                      'A⊻B,Γ⇒Δ,A,B': ['A⊻B,B,Γ⇒Δ,B', '(02) ↓'],
+                      'Γ⇒Δ,A→B,A,B': ['A,Γ⇒Δ,A,B', '(11) ↓'],
+                      'B,Γ⇒Δ,A→B,A': ['Γ⇒Δ,A→B,A,B', '(06) ↑'],
+                      'B,A,Γ⇒Δ,A→B': ['B,A,Γ⇒Δ,B', '(07) ↓'],
+                      'A,A→B,Γ⇒Δ,B': ['A,B,Γ⇒Δ,B', '(05) ↑'],
+                      'B,Γ⇒Δ,A∨B,A': ['B,Γ⇒Δ,A∨B,B', '(01) ↓'],
+                      'A,Γ⇒Δ,A∨B,B': ['A,Γ⇒Δ,A∨B,A', '(01) ↑'],
+                      'B,A,Γ⇒Δ,A∨B': ['B,Γ⇒Δ,A∨B,A', '(08) ↓'],
+                      'A∨B,Γ⇒Δ,A,B': ['B,Γ⇒Δ,A,B', '(00) ↑']}
         self.isTautology = True
 
     def pipeline(self, seq, depth=0):
@@ -201,14 +213,14 @@ class Prover:
 
     def recursive_cut(self, parent_sequent, possible_cuts='AB', depth=0):
         if possible_cuts:
-            print('*'*30)
+            print('*' * 30)
             print('\t' * depth, end='')
             print(f'parent_seq = {parent_sequent.sequent}')
             print('\t' * depth, end='')
             print(f'banned = {parent_sequent.banned}')
             print('\t' * depth, end='')
             print(f'inv_dict = {parent_sequent.inv_dict}')
-            print('*'*30)
+            print('*' * 30)
 
             print('\t' * depth, end='')
             print(f'Cut (by {possible_cuts[0]} which is {parent_sequent.inv_dict[possible_cuts[0]]})')
@@ -221,7 +233,8 @@ class Prover:
                 self.tree = self.tree.append({'depth': depth,
                                               'parent': parent_sequent.sequent,
                                               'value': sol.sequent,
-                                              'operation': f'CUT by {possible_cuts[0]} / {parent_sequent.inv_dict[possible_cuts[0]]}'},
+                                              'operation': f'CUT by {possible_cuts[0]} / '
+                                                           f'{parent_sequent.inv_dict[possible_cuts[0]]}'},
                                              ignore_index=True)
                 if check_if_axiom(sol.sequent):
                     print('\t' * depth, end='')
@@ -242,91 +255,109 @@ class Prover:
             print('\t' * depth, end='')
             print(parent_sequent.base + ' → ' + self.rules[parent_sequent.base][0])
             out_base = self.rules[parent_sequent.base][0]
-            out_seq = multi_replace({**{f'A{self.conn}B': parent_sequent.longest_object},
-                                     **parent_sequent.inv_dict}, out_base)
-
+            sol = Sequent(multi_replace({**{f'A{self.conn}B': parent_sequent.longest_object},
+                                         **parent_sequent.inv_dict}, out_base), banned=parent_sequent.banned)
+            sol.base = out_base
+            sol.inv_dict = parent_sequent.inv_dict
             self.tree = self.tree.append({'depth': depth,
                                           'parent': parent_sequent.sequent,
-                                          'value': out_seq,
+                                          'value': sol.sequent,
                                           'operation': self.rules[parent_sequent.base][1]},
                                          ignore_index=True)
 
-            if check_if_axiom(out_seq):
+            if check_if_axiom(sol.sequent):
                 print('\t' * depth, end='')
-                print(f'Solution: {out_seq} is an axiom.')
+                print(f'Solution: {sol.sequent} is an axiom.')
             else:
                 print('\t' * depth, end='')
-                print('NO JAK TO KURNA NIE.')
+                print('Moving forward...')
+                self.from_rules(sol, depth=depth)
         else:
             print('\t' * depth, end='')
             print(f'No solution found for {parent_sequent.sequent}')
-            print('*'*20)
+            print('*' * 20)
             self.pipeline(deepcopy(parent_sequent), depth=depth)
 
 
-# pd.set_option('display.max_columns', None)
-# pd.set_option("max_rows", None)
-#
-# # FORMUŁY OD SZYMONA
-# data = pd.read_csv('dawid=.txt')
-# for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
-#     data['formula'] = data['formula'].str.replace(old, new)
-# data['formula'] = data['formula'].str.replace(' ', '')
-#
-# for index, trial in data.head(5).iterrows():
-#     testseq = trial['formula']
-#     prvr = Prover()
-#     seq_init = Sequent(testseq)
-#     prvr.pipeline(seq_init)
-#     print()
-#     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
-#
-#     # check if a sequent is a tautology
-#     assert prvr.isTautology == trial['is tautology Syn']
-#
-#     print()
-#     print('*'*30)
-#     print()
+pd.set_option('display.max_columns', None)
+pd.set_option("max_rows", None)
 
-# mixed:
-# ->(pxq)=(~px~q)
-testSeqs = ['->p=p',
-            'p->p=p',
-            '->p=p,p',
-            '~p->p=p',
-            '->p=p,~p',
-            '->(p=q)=(q=p)',
-            'p=q->p=r,(q=r)=(p=r)',
-            'p=q,p=r->(q=r)=(p=r)',
-            'p=q->~(p=r),(q=r)=(p=r)',
-            'p=q,~(p=r)->(q=r)=(p=r)',
-            '(p=r)=(q=s)->(p=q)=(r=s)',
-            'p=r->(p=q)=(r=q)',
-            'p->~(pxp)',
-            '->~(pxp),p',
-            '~p->~(pxp)',
-            '->~(pxp),~p',
-            '~(pxq)->p,~((qxr)x(pxr))',
-            '->(pxq)=((~p)x(~q))']
+# FORMUŁY OD SZYMONA
+data = pd.read_csv('dawid=.txt')
+for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
+    data['formula'] = data['formula'].str.replace(old, new)
+data['formula'] = data['formula'].str.replace(' ', '')
 
-for ts in testSeqs[:]:
+for index, trial in data.iterrows():
+    testseq = trial['formula']
     prvr = Prover()
-    print(ts)
-    seq_init = Sequent(ts)
+    seq_init = Sequent(testseq)
     prvr.pipeline(seq_init)
     print()
     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
+
+    # check if a sequent is a tautology
+    assert prvr.isTautology == trial['is tautology Syn']
+
     print()
-    print(prvr.isTautology)
-    print()
-    print('*' * 30)
+    print('*'*30)
     print()
 
+# testSeqs = {'=': ['=>p=p',
+#                   'p=>p=p',
+#                   '=>p=p,p',
+#                   '~p=>p=p',
+#                   '=>p=p,~p',
+#                   '=>(p=q)=(q=p)',
+#                   'p=q=>p=r,(q=r)=(p=r)',
+#                   'p=q,p=r=>(q=r)=(p=r)',
+#                   'p=q=>~(p=r),(q=r)=(p=r)',
+#                   'p=q,~(p=r)=>(q=r)=(p=r)',
+#                   '(p=r)=(q=s)=>(p=q)=(r=s)',
+#                   'p=r=>(p=q)=(r=q)'],
+#             'x': ['p=>~(pxp)',
+#                   '=>~(pxp),p',
+#                   '~p=>~(pxp)',
+#                   '=>~(pxp),~p',
+#                   '~(pxq)=>p,~((qxr)x(pxr))'],
+#             '->': ['=>p->q',
+#                    '=>p->(q->p)',
+#                    'p->r,p,q=>r',
+#                    'q->r,p,q=>r',
+#                    'p->q=>p->q',
+#                    'r->p,r=>p',
+#                    'p->q,r->p,r=>q',
+#                    '=>(p->(q->r))->((p->q)->(p->r))',
+#                    '=>((~p)->(~q))->(q->p)'],
+#             'v': ['p=>pvq',
+#                   'pvq=>p,q',
+#                   'pvq=>qvp'],
+#             'mixed': ['r=>pxq,(p=q)=r',
+#                       '=>(pxq)=((~p)x(~q))',
+#                       '~(pxq)=>~r,(p=q)=(~r)',
+#                       '(p->r)v(q->r),p,q=>r',
+#                       '=>(p->q)v(q->p)']}
+#
+# for ts in testSeqs['mixed']:
+#     prvr = Prover()
+#     print(ts)
+#     seq_init = Sequent(ts)
+#     prvr.pipeline(seq_init)
+#     print()
+#     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
+#     print()
+#     print(prvr.isTautology)
+#     print()
+#     print('*' * 30)
+#     print()
+
+# ts = '=>p->q'
 # prvr = Prover()
-# print(testSeqs[-1])
-# seq_init = Sequent(testSeqs[-1])
+# print(ts)
+# seq_init = Sequent(ts)
 # prvr.pipeline(seq_init)
 # print()
 # print(prvr.tree[['depth', 'parent', 'value', 'operation']])
 # print()
+# check_if_tautology(prvr)
 # print(prvr.isTautology)
