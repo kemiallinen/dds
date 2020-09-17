@@ -283,13 +283,17 @@ pd.set_option('display.max_columns', None)
 pd.set_option("max_rows", None)
 
 # FORMUŁY OD SZYMONA
-data = pd.read_csv('dawid=.txt')
+data = pd.read_csv('disjneg8.txt')
 for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
     data['formula'] = data['formula'].str.replace(old, new)
 data['formula'] = data['formula'].str.replace(' ', '')
+d = {' "True"': True, ' "False"': False}
+data[data.columns[1]] = data[data.columns[1]].map(d)
+mismatches = []
 
 for index, trial in data.iterrows():
     testseq = trial['formula']
+    print(index, testseq)
     prvr = Prover()
     seq_init = Sequent(testseq)
     prvr.pipeline(seq_init)
@@ -297,12 +301,17 @@ for index, trial in data.iterrows():
     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
 
     # check if a sequent is a tautology
-    assert prvr.isTautology == trial['is tautology Syn']
-
+    print(trial[data.columns[1]], prvr.isTautology)
+    # assert prvr.isTautology == trial[data.columns[1]]
+    if trial[data.columns[1]] != prvr.isTautology:
+        mismatches.append([index, trial['formula'], trial[data.columns[1]], prvr.isTautology])
     print()
     print('*'*30)
     print()
 
+print('MISMATCHES:')
+for elt in mismatches:
+    print(elt)
 # testSeqs = {'=': ['=>p=p',
 #                   'p=>p=p',
 #                   '=>p=p,p',
