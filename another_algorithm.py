@@ -44,38 +44,47 @@ def split_by_connective(s, conns):
     slice_at = [i for i, ch in enumerate(s) if (ch in conns) and (par_nest[i] == min(par_nest))][0]
     out = [s[:slice_at], s[slice_at + 1:]]
     for n, obj in enumerate(out):
-        if '(' in obj:
+        if (obj[0] == '(') and (obj[-1] == ')'):
             out[n] = out[n][1:-1]
     return out[0], out[1], s[slice_at]
 
 
-def negation_remover(sequent):
-    sequent = sequent.split('⇒')
+def negation_remover(sequent_init):
+    sequent = sequent_init.split('⇒')
     for n, side in enumerate(sequent):
         if side:
-            par_nest = list(accumulate((ch == "(") - (ch == ")") for ch in side))
-            collect = False
+            elts = side.split(',')
             negation = ''
-            for numch, ch in enumerate(side):
-                if collect:
-                    negation += ch
-                if ch == '~' and par_nest[numch] == 0:
-                    collect = True
-                elif par_nest[numch] == 0 and collect:
+            for elt in elts:
+                par_nest = list(accumulate((ch == "(") - (ch == ")") for ch in elt))
+                collect = False
+                for numch, ch in enumerate(elt):
+                    if collect:
+                        negation += ch
+                    if ch == '~' and par_nest[numch] == 0:
+                        collect = True
+                    elif numch < len(elt) - 1:
+                        if par_nest[numch + 1] == 0 and elt[numch + 1] in '→≡∨⊻':
+                            negation = ''
+                            break
+                    elif (par_nest[numch] == 0 and collect) or (not collect and ch in '→≡∨⊻'):
+                        break
+                if negation:
                     break
             if negation:
                 new_side = side.split(',')
-                new_side.remove('~' + negation)
-                sequent[n] = ','.join(new_side)
-                if len(negation) > 1:
-                    negation = negation[1:-1]
-                new_opposite_side = sequent[int(not n)].split(',') + [negation]
-                if '' in new_opposite_side:
-                    new_opposite_side.remove('')
-                sequent[int(not n)] = ','.join(new_opposite_side)
+                if '~' + negation in new_side:
+                    new_side.remove('~' + negation)
+                    sequent[n] = ','.join(new_side)
+                    if len(negation) > 1:
+                        negation = negation[1:-1]
+                    new_opposite_side = sequent[int(not n)].split(',') + [negation]
+                    if '' in new_opposite_side:
+                        new_opposite_side.remove('')
+                    sequent[int(not n)] = ','.join(new_opposite_side)
     out = '⇒'.join(sequent)
     par_nest = list(accumulate((ch == "(") - (ch == ")") for ch in out))
-    if any([ch == '~' and par_nest[n] == 0 for n, ch in enumerate(out)]):
+    if (any([ch == '~' and par_nest[n] == 0 for n, ch in enumerate(out)])) and (sequent_init != out):
         return negation_remover(out)
     else:
         return out
@@ -264,7 +273,6 @@ class Prover:
                                           'value': sol.sequent,
                                           'operation': self.rules[parent_sequent.base][1]},
                                          ignore_index=True)
-
             if check_if_axiom(sol.sequent):
                 print('\t' * depth, end='')
                 print(f'Solution: {sol.sequent} is an axiom.')
@@ -282,36 +290,38 @@ class Prover:
 pd.set_option('display.max_columns', None)
 pd.set_option("max_rows", None)
 
-# FORMUŁY OD SZYMONA
-data = pd.read_csv('disjneg8.txt')
-for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
-    data['formula'] = data['formula'].str.replace(old, new)
-data['formula'] = data['formula'].str.replace(' ', '')
-d = {' "True"': True, ' "False"': False}
-data[data.columns[1]] = data[data.columns[1]].map(d)
-mismatches = []
+if __name__ == "__main__":
 
-for index, trial in data.iterrows():
-    testseq = trial['formula']
-    print(index, testseq)
-    prvr = Prover()
-    seq_init = Sequent(testseq)
-    prvr.pipeline(seq_init)
-    print()
-    print(prvr.tree[['depth', 'parent', 'value', 'operation']])
+    # FORMUŁY OD SZYMONA
+    data = pd.read_csv('noconj9.txt')
+    for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
+        data['formula'] = data['formula'].str.replace(old, new)
+    data['formula'] = data['formula'].str.replace(' ', '')
+    d = {' "True"': True, ' "False"': False}
+    data[data.columns[1]] = data[data.columns[1]].map(d)
+    mismatches = []
 
-    # check if a sequent is a tautology
-    print(trial[data.columns[1]], prvr.isTautology)
-    # assert prvr.isTautology == trial[data.columns[1]]
-    if trial[data.columns[1]] != prvr.isTautology:
-        mismatches.append([index, trial['formula'], trial[data.columns[1]], prvr.isTautology])
-    print()
-    print('*'*30)
-    print()
+    for index, trial in data.iterrows():
+        testseq = trial['formula']
+        print(index, testseq)
+        prvr = Prover()
+        seq_init = Sequent(testseq)
+        prvr.pipeline(seq_init)
+        print()
+        print(prvr.tree[['depth', 'parent', 'value', 'operation']])
 
-print('MISMATCHES:')
-for elt in mismatches:
-    print(elt)
+        # check if a sequent is a tautology
+        print(trial[data.columns[1]], prvr.isTautology)
+        # assert prvr.isTautology == trial[data.columns[1]]
+        if trial[data.columns[1]] != prvr.isTautology:
+            mismatches.append([index, trial['formula'], trial[data.columns[1]], prvr.isTautology])
+        print()
+        print('*'*30)
+        print()
+
+    print('MISMATCHES:')
+    for elt in mismatches:
+        print(elt)
 # testSeqs = {'=': ['=>p=p',
 #                   'p=>p=p',
 #                   '=>p=p,p',
@@ -370,3 +380,28 @@ for elt in mismatches:
 # print()
 # check_if_tautology(prvr)
 # print(prvr.isTautology)
+
+# # implneg9.txt
+# data_implneg9 = [[162, '~(~((p->p)->(p->p)))', False, True], [175, '~(~((q->p)->(q->p)))', False, True],
+#                  [1402, 'p->((p->p)->(p->p))', False, True], [1404, 'q->((p->p)->(p->p))', False, True],
+#                  [1413, 'p->((q->p)->(q->p))', False, True], [1415, 'p->((p->q)->(p->q))', False, True],
+#                  [1442, 'p->((q->r)->(q->r))', False, True], [1969, '(p->p)->(~(~(p->p)))', False, True],
+#                  [1982, '(q->p)->(~(~(q->p)))', False, True], [2029, '(p->p)->(p->(p->p))', False, True],
+#                  [2033, '(p->p)->(q->(p->p))', False, True], [2041, '(p->q)->(p->(p->q))', False, True],
+#                  [2043, '(q->p)->(p->(q->p))', False, True], [2065, '(p->q)->(r->(p->q))', False, True],
+#                  [2248, '(p->(~p))->(p->(~p))', False, True], [2261, '(q->(~p))->(q->(~p))', False, True],
+#                  [2313, '((~p)->p)->((~p)->p)', False, True], [2326, '((~q)->p)->((~q)->p)', False, True]]
+#
+# for trial in data_implneg9:
+#     testseq = trial[1]
+#     print(testseq)
+#     prvr = Prover()
+#     seq_init = Sequent(testseq)
+#     prvr.pipeline(seq_init)
+#     print()
+#     print(prvr.tree[['depth', 'parent', 'value', 'operation']])
+#     print()
+#     print(trial[2], prvr.isTautology)
+#     print()
+#     print('*'*30)
+#     print()
