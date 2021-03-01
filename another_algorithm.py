@@ -24,7 +24,8 @@ def seq_format(sequent):
                       '->': '→',
                       '=': '≡',
                       'v': '∨',
-                      'x': '⊻'}
+                      'x': '⊻',
+                      '&': '∧'}
         sequent = multi_replace(dictionary, sequent)
     return clear_commas(sequent)
 
@@ -64,10 +65,10 @@ def negation_remover(sequent_init):
                     if ch == '~' and par_nest[numch] == 0:
                         collect = True
                     elif numch < len(elt) - 1:
-                        if par_nest[numch + 1] == 0 and elt[numch + 1] in '→≡∨⊻':
+                        if par_nest[numch + 1] == 0 and elt[numch + 1] in '→≡∨⊻∧':
                             negation = ''
                             break
-                    elif (par_nest[numch] == 0 and collect) or (not collect and ch in '→≡∨⊻'):
+                    elif (par_nest[numch] == 0 and collect) or (not collect and ch in '→≡∨⊻∧'):
                         break
                 if negation:
                     break
@@ -76,7 +77,7 @@ def negation_remover(sequent_init):
                 if '~' + negation in new_side:
                     new_side.remove('~' + negation)
                     sequent[n] = ','.join(new_side)
-                    if len(negation) > 1:
+                    if len(negation) > 1 and negation[0] != '~':
                         negation = negation[1:-1]
                     new_opposite_side = sequent[int(not n)].split(',') + [negation]
                     if '' in new_opposite_side:
@@ -148,11 +149,15 @@ class Sequent:
         self.banned.add(longest)
 
 
+class FalsumError(BaseException):
+    pass
+
+
 class Prover:
     def __init__(self):
         self.ss = '⇒'
         self.conn = ''
-        self.connectives = '≡⊻∨→'
+        self.connectives = '≡⊻∨→∧'
         self.tree = pd.DataFrame(columns=['depth', 'parent', 'value', 'operation'])
         self.rules = {'Γ⇒Δ,A≡B,A,B': ['B,Γ⇒Δ,A≡B,B', '(05) ↑'],
                       'B,A,Γ⇒Δ,A≡B': ['A,Γ⇒Δ,A,A≡B', '(05) ↓'],
@@ -169,48 +174,60 @@ class Prover:
                       'B,Γ⇒Δ,A∨B,A': ['B,Γ⇒Δ,A∨B,B', '(01) ↓'],
                       'A,Γ⇒Δ,A∨B,B': ['A,Γ⇒Δ,A∨B,A', '(01) ↑'],
                       'B,A,Γ⇒Δ,A∨B': ['B,Γ⇒Δ,A∨B,A', '(08) ↓'],
-                      'A∨B,Γ⇒Δ,A,B': ['B,Γ⇒Δ,A,B', '(00) ↑']}
+                      'A∨B,Γ⇒Δ,A,B': ['B,Γ⇒Δ,A,B', '(00) ↑'],
+                      'B,Γ⇒Δ,A∧B,A': ['B,Γ⇒Δ,A,A', '(02) ↓'],
+                      'A,Γ⇒Δ,A∧B,B': ['A,Γ⇒Δ,B,B', '(07) ↑'],
+                      'B,A,Γ⇒Δ,A∧B': ['B,A,Γ⇒Δ,A', '(02) ↓'],
+                      'A∧B,Γ⇒Δ,A,B': ['A,B,Γ⇒Δ,A∧B', '(00) ↑'],
+                      'A,B,Γ⇒Δ,A∧B': ['A,B,Γ⇒Δ,A', '(02) ↓'],
+                      'B,A∧B,Γ⇒Δ,A': ['A,B,Γ⇒Δ,A', '(09) ↓'],
+                      'A,A∧B,Γ⇒Δ,B': ['A,B,Γ⇒Δ,B', '(03) ↓'],
+                      'B,A,A∧B,Γ⇒Δ': ['B,A,B,Γ⇒Δ', '(03) ↓']}
+        self.max_depth = 0
         self.isTautology = True
 
     def pipeline(self, seq, depth=0):
-        print(f'depth = {depth} // current sequent = {seq.sequent}')
-        if self.tree.empty:
-            self.tree = self.tree.append({'depth': depth,
-                                          'parent': 'ROOT',
-                                          'value': seq.sequent,
-                                          'operation': 'START'},
-                                         ignore_index=True)
+        if self.isTautology:
+            print(f'depth = {depth} // current sequent = {seq.sequent}')
+            if self.tree.empty:
+                self.tree = self.tree.append({'depth': depth,
+                                              'parent': 'ROOT',
+                                              'value': seq.sequent,
+                                              'operation': 'START'},
+                                             ignore_index=True)
 
-        # remove negations
-        if '~' in seq.sequent:
-            seq.unnegate()
-            print('negation removed', seq.sequent)
+            # remove negations
+            if '~' in seq.sequent:
+                seq.unnegate()
+                print('negation removed', seq.sequent)
 
-        # find longest object
-        seq.find_longest_object()
+            # find longest object
+            seq.find_longest_object()
 
-        if any(el in seq.longest_object for el in self.connectives):
+            if any(el in seq.longest_object for el in self.connectives):
 
-            # update dict A, B
-            seq.inv_dict['A'], seq.inv_dict['B'], self.conn = split_by_connective(seq.longest_object, self.connectives)
+                # update dict A, B
+                seq.inv_dict['A'], seq.inv_dict['B'], self.conn = split_by_connective(seq.longest_object, self.connectives)
 
-            # update dict G, D
-            for ch, n in zip('ΓΔ', [0, 1]):
-                seq.inv_dict[ch] = ','.join(set(filter(lambda x: x != seq.longest_object, seq.single[n])))
-            print(seq.inv_dict)
+                # update dict G, D
+                for ch, n in zip('ΓΔ', [0, 1]):
+                    seq.inv_dict[ch] = ','.join(set(filter(lambda x: x != seq.longest_object, seq.single[n])))
+                print(seq.inv_dict)
 
-            # update base form
-            if seq.sideFlag:
-                seq.base = f'Γ⇒Δ,A{self.conn}B'
+                # update base form
+                if seq.sideFlag:
+                    seq.base = f'Γ⇒Δ,A{self.conn}B'
+                else:
+                    seq.base = f'A{self.conn}B,Γ⇒Δ'
+
+                # perform cut twice (and check if axiom after each cut)
+                self.recursive_cut(seq, depth=depth)
+
             else:
-                seq.base = f'A{self.conn}B,Γ⇒Δ'
-
-            # perform cut twice (and check if axiom after each cut)
-            self.recursive_cut(seq, depth=depth)
-
-        else:
-            print('******** NA ********')
-            self.isTautology = False
+                print('******** NA ********')
+                self.isTautology = False
+                self.max_depth = depth
+                raise FalsumError
 
     def cut_by(self, sequent, to_cut):
         se = sequent.single
@@ -293,11 +310,11 @@ pd.set_option("max_rows", None)
 if __name__ == "__main__":
 
     # FORMUŁY OD SZYMONA
-    data = pd.read_csv('noconj9.txt')
+    data = pd.read_csv('formulas_Dawid.txt')
     for old, new in zip(['\(p1\)', '\(p2\)', '\(p3\)', '\(p4\)'], 'pqrs'):
         data['formula'] = data['formula'].str.replace(old, new)
     data['formula'] = data['formula'].str.replace(' ', '')
-    d = {' "True"': True, ' "False"': False}
+    d = {' True': True, ' False': False}
     data[data.columns[1]] = data[data.columns[1]].map(d)
     mismatches = []
 
@@ -306,22 +323,30 @@ if __name__ == "__main__":
         print(index, testseq)
         prvr = Prover()
         seq_init = Sequent(testseq)
-        prvr.pipeline(seq_init)
-        print()
-        print(prvr.tree[['depth', 'parent', 'value', 'operation']])
+        try:
+            prvr.pipeline(seq_init)
+            print()
+            print(prvr.tree[['depth', 'parent', 'value', 'operation']])
 
-        # check if a sequent is a tautology
-        print(trial[data.columns[1]], prvr.isTautology)
-        # assert prvr.isTautology == trial[data.columns[1]]
-        if trial[data.columns[1]] != prvr.isTautology:
-            mismatches.append([index, trial['formula'], trial[data.columns[1]], prvr.isTautology])
-        print()
-        print('*'*30)
-        print()
+            # check if a sequent is a tautology
+            print(trial[data.columns[1]], prvr.isTautology)
+            # assert prvr.isTautology == trial[data.columns[1]]
+            if trial[data.columns[1]] != prvr.isTautology:
+                mismatches.append([index, trial['formula'], trial[data.columns[1]], prvr.isTautology])
+            print()
+            print('*'*30)
+            print()
+            if not prvr.isTautology:
+                input('press enter to continue...')
+        except FalsumError:
+            print(f'{testseq} :: falsum. Max depth reached: {prvr.max_depth}')
+            input('press enter to continue...')
 
     print('MISMATCHES:')
     for elt in mismatches:
         print(elt)
+
+# ***********************************************************
 # testSeqs = {'=': ['=>p=p',
 #                   'p=>p=p',
 #                   '=>p=p,p',
@@ -370,7 +395,13 @@ if __name__ == "__main__":
 #     print('*' * 30)
 #     print()
 
-# ts = '=>p->q'
+# (p&q)&r=>q&p true
+# p&q,q&r,s=>p&s true
+# p=>p&q false
+# (p&q)&r=>q&s false
+
+# ts = '~(~(~(~(~(p->p)))))'
+# ts = ts.replace(' ', '')
 # prvr = Prover()
 # print(ts)
 # seq_init = Sequent(ts)
